@@ -1,0 +1,12 @@
+<Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+       xmlns:views="clr-namespace:SpringApp.Views"
+       x:Class="SpringApp.AppShell"
+       ForegroundColor="White"
+       BackgroundColor="#004aad">
+
+    <!-- Ocultamos a TabBar inferior nativa para usar exclusivamente o nosso menu customizado na MainPage -->
+    <ShellContent ContentTemplate="{DataTemplate views:MainPage}" 
+                  Route="MainPage" />
+
+</Shell>

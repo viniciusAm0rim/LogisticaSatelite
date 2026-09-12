@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="LogisticaSatelite.Api/LogisticaSatelite.Api.csproj" />
+  <Project Path="SpringApp/SpringApp.csproj" Id="0f1c106c-6cf3-4dda-abac-03bc431a4637" />
+</Solution>
