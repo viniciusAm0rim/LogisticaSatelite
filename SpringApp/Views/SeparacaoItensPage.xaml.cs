@@ -1,3 +1,4 @@
+using Microsoft.Maui.Controls;
 using SpringApp.Models;
 using SpringApp.Services;
 
@@ -5,55 +6,68 @@ namespace SpringApp.Views;
 
 public partial class SeparacaoItensPage : ContentPage
 {
-    private readonly Pedido _pedido;
-    private readonly PedidoService _pedidoService;
+    private Pedido _pedido;
+    private readonly MockPedidoService _pedidoService;
     private bool _isFinalizando = false;
+    private readonly int _pedidoId;
+    private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
     public SeparacaoItensPage(Pedido pedido)
     {
         InitializeComponent();
         _pedido = pedido;
-        _pedidoService = new PedidoService();
-
-        CarregarDados();
+        _pedidoId = pedido.Id;
+        _pedidoService = new MockPedidoService();
     }
 
-    private void CarregarDados()
+    protected override async void OnAppearing()
     {
-        NumeroPedidoLabel.Text = $"Pedido #{_pedido.Id} - {_pedido.Numero}";
-        ClienteLabel.Text = $"Cliente: {_pedido.Destinatario}";
+        base.OnAppearing();
+        await _pedidoService.BloquearPedidoAsync(_pedidoId, _usuarioLogado); // LOCK ENTRADA
+        await CarregarPedidoDaApiAsync();
+        Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
+    }
+
+    protected override bool OnBackButtonPressed() => true;
+
+    private async Task CarregarPedidoDaApiAsync()
+    {
+        try
+        {
+            var p = await _pedidoService.GetPedidoPorIdAsync(_pedidoId);
+            if (p != null) _pedido = p;
+        }
+        catch { }
+
+        NumeroPedidoLabel.Text = $"#{_pedido.Id:D4}";
+        ClienteLabel.Text = (_pedido.Destinatario ?? "").ToUpper();
+        ModalLabel.Text = string.IsNullOrEmpty(_pedido.Modal) ? "PADRÃO" : _pedido.Modal.ToUpper();
         AtualizarContadores();
     }
 
-    private void OnBiparClicked(object sender, EventArgs e) => ExecutarBipagemPorCodigo(CodigoBarraEntry.Text?.Trim());
-    private void OnBiparCompleted(object sender, EventArgs e) => ExecutarBipagemPorCodigo(CodigoBarraEntry.Text?.Trim());
-    private void OnBiparItemDiretoClicked(object sender, EventArgs e)
+    private void OnCodigoScaneadoCompleted(object sender, EventArgs e)
     {
-        if (sender is Button button && button.CommandParameter is ItemPedido item)
+        if (sender is Entry entry && !string.IsNullOrWhiteSpace(entry.Text))
         {
-            ProcessarBipagemItem(item);
+            string codigo = entry.Text.Trim();
+            entry.Text = string.Empty;
+            var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo, StringComparison.OrdinalIgnoreCase));
+            if (item != null) ProcessarBipagemItem(item);
+            else DisplayAlert("Atenção", "Código inválido.", "OK");
+            Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
         }
     }
 
-    private void ExecutarBipagemPorCodigo(string? codigo)
+    private async void OnDigitarCodigoManualClicked(object sender, EventArgs e)
     {
-        if (string.IsNullOrEmpty(codigo)) return;
-
-        var item = _pedido.Itens.FirstOrDefault(i =>
-            i.Nome.Equals(codigo, StringComparison.OrdinalIgnoreCase) ||
-            i.Id.ToString() == codigo);
-
-        if (item != null)
+        string codigo = await DisplayPromptAsync("Manual", "Informe o SKU:", "Confirmar", "Cancelar");
+        if (!string.IsNullOrWhiteSpace(codigo))
         {
-            ProcessarBipagemItem(item);
+            var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (item != null) ProcessarBipagemItem(item);
+            else await DisplayAlert("Erro", "Produto não encontrado.", "OK");
         }
-        else
-        {
-            DisplayAlert("Atenção", "Item não pertence a este pedido!", "OK");
-        }
-
-        CodigoBarraEntry.Text = string.Empty;
-        CodigoBarraEntry.Focus();
+        Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
     }
 
     private void ProcessarBipagemItem(ItemPedido item)
@@ -63,26 +77,29 @@ public partial class SeparacaoItensPage : ContentPage
             item.BipagensSeparacao++;
             AtualizarContadores();
         }
-        else
-        {
-            DisplayAlert("Aviso", "A quantidade deste item já foi totalmente bipada!", "OK");
-        }
     }
 
     private void AtualizarContadores()
     {
-        int totalItensGeral = _pedido.Itens.Sum(i => i.Quantidade);
-        int totalSeparadosGeral = _pedido.Itens.Sum(i => i.BipagensSeparacao);
-        int totalPendente = _pedido.Itens.Sum(i => i.SeparacaoPendente);
+        if (_pedido?.Itens == null) return;
+        int total = _pedido.Itens.Sum(i => i.Quantidade);
+        int sep = _pedido.Itens.Sum(i => i.BipagensSeparacao);
 
-        TotalRestanteLabel.Text = $"{totalSeparadosGeral} de {totalItensGeral}";
-
+        TotalRestanteLabel.Text = sep.ToString();
+        TotalGeralLabel.Text = total.ToString();
         ItensCollectionView.ItemsSource = null;
         ItensCollectionView.ItemsSource = _pedido.Itens;
 
-        if (totalPendente <= 0 && _pedido.Itens.Any())
+        if (total - sep <= 0 && _pedido.Itens.Any()) _ = FinalizarSeparacaoAutomaticaAsync();
+    }
+
+    private async void OnCancelarClicked(object sender, EventArgs e)
+    {
+        bool confirm = await DisplayAlert("Atenção", "Deseja cancelar?", "Sim", "Não");
+        if (confirm)
         {
-            _ = FinalizarSeparacaoAutomaticaAsync();
+            var (sucesso, msg) = await _pedidoService.ReverterEtapaAsync(_pedido.Id);
+            if (sucesso) await Navigation.PopAsync();
         }
     }
 
@@ -91,17 +108,16 @@ public partial class SeparacaoItensPage : ContentPage
         if (_isFinalizando) return;
         _isFinalizando = true;
 
-        var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(_pedido.Id, "Em Separaçao");
-
+        var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(_pedido.Id, _pedido.Status, _usuarioLogado);
         if (sucesso)
         {
-            await DisplayAlert("Separação Concluída", "Todos os itens foram bipados! Pedido enviado para conferência.", "OK");
+            await DisplayAlert("Sucesso", "Separação concluída!", "OK");
             await Navigation.PopAsync();
         }
         else
         {
             _isFinalizando = false;
-            await DisplayAlert("Erro ao Concluir", mensagem, "OK");
+            await DisplayAlert("Erro", msg, "OK");
         }
     }
 }

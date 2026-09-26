@@ -80,6 +80,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <MauiXaml Update="Views\AbastecimentoPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
 	  <MauiXaml Update="Views\ConferenciaItensPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>

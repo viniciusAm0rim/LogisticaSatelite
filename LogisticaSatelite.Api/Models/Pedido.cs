@@ -1,4 +1,5 @@
-﻿namespace LogisticaSatelite.Api.Models
+﻿
+namespace LogisticaSatelite.Api.Models
 {
     public class Pedido
     {

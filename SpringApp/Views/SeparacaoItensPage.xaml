@@ -1,77 +1,88 @@
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="SpringApp.Views.SeparacaoItensPage"
-             Title="Separar Itens">
+             NavigationPage.HasNavigationBar="False" Shell.NavBarIsVisible="False" BackgroundColor="#f8fafc">
+    <Grid RowDefinitions="*, Auto" RowSpacing="0">
+        <Entry x:Name="LeitorBluetoothEntry" IsVisible="False" Completed="OnCodigoScaneadoCompleted"/>
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout Padding="20,15" Spacing="15">
+                <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <Label Text="SEPARAR ITENS" FontSize="16" FontAttributes="Bold" TextColor="#0f172a" HorizontalTextAlignment="Center"/>
+                </Border>
+                <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="16">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16"/>
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto, Auto" RowSpacing="6">
+                        <Label Grid.Row="0" Grid.Column="0" Text="PEDIDO" FontSize="10" FontAttributes="Bold" TextColor="#94a3b8"/>
+                        <Border Grid.Row="0" Grid.Column="1" BackgroundColor="#dcfce7" Stroke="Transparent" Padding="10,4" HorizontalOptions="End">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8"/>
+                            </Border.StrokeShape>
+                            <Label x:Name="ModalLabel" Text="CLIENTE RETIRA" FontSize="11" FontAttributes="Bold" TextColor="#15803d"/>
+                        </Border>
+                        <Label x:Name="NumeroPedidoLabel" Grid.Row="1" Grid.Column="0" Text="#0001" FontSize="20" FontAttributes="Bold" TextColor="#0f172a"/>
+                        <Label x:Name="ClienteLabel" Grid.Row="2" Grid.ColumnSpan="2" Text="NOME DO CLIENTE" FontSize="14" FontAttributes="Bold" TextColor="#475569"/>
+                    </Grid>
+                </Border>
+                <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="16,12">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16"/>
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                        <Label Text="ITENS A SEPARAR" FontSize="11" FontAttributes="Bold" TextColor="#94a3b8" VerticalOptions="Center"/>
+                        <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                            <Label x:Name="TotalRestanteLabel" Text="0" FontSize="16" FontAttributes="Bold" TextColor="#0f172a"/>
+                            <Label Text="de" FontSize="14" TextColor="#64748b" VerticalOptions="Center"/>
+                            <Label x:Name="TotalGeralLabel" Text="0" FontSize="14" TextColor="#64748b" VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+                    </Grid>
+                </Border>
+                <Button Text="DIGITAR CÓDIGO MANUALMENTE" Clicked="OnDigitarCodigoManualClicked" BackgroundColor="#e0f2fe" TextColor="#0369a1" FontAttributes="Bold" FontSize="12" CornerRadius="12" HeightRequest="42"/>
+                <CollectionView x:Name="ItensCollectionView" SelectionMode="None" HeightRequest="250">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,12" Padding="16" Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="16"/>
+                                </Border.StrokeShape>
+                                <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto, Auto" RowSpacing="4">
 
-    <Grid RowDefinitions="Auto, Auto, Auto, *" Padding="15" RowSpacing="12">
+                                    <!-- CORREÇÃO AQUI: Mostrando NOME e CODIGO -->
+                                    <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="0">
+                                        <Label Text="{Binding Nome}" FontAttributes="Bold" FontSize="14" TextColor="#0f172a"/>
+                                        <Label Text="{Binding CodItem, StringFormat='Cód: {0}'}" FontSize="9" TextColor="#64748b"/>
+                                    </VerticalStackLayout>
 
-        <!-- 1. Card Indicador Principal: Total de Itens a Separar -->
-        <Frame Grid.Row="0" BackgroundColor="#f0f9ff" BorderColor="#0284c7" Padding="15" CornerRadius="8" HasShadow="False">
-            <Grid ColumnDefinitions="*, Auto">
-                <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
-                    <Label Text="TOTAL DE ITENS A SEPARAR" FontSize="11" TextColor="#0369a1" FontAttributes="Bold"/>
-                    <Label x:Name="TotalRestanteLabel" Text="0 de 0" FontSize="26" FontAttributes="Bold" TextColor="#0284c7"/>
-                </VerticalStackLayout>
-                <Label Grid.Column="1" Text="📦" FontSize="32" VerticalOptions="Center"/>
-            </Grid>
-        </Frame>
+                                    <Border Grid.Row="1" Grid.Column="0" BackgroundColor="#fef3c7" Stroke="Transparent" Padding="8,2" HorizontalOptions="Start" Margin="0,4,0,0">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="6"/>
+                                        </Border.StrokeShape>
+                                        <Label Text="{Binding LocalPicking}" FontSize="11" FontAttributes="Bold" TextColor="#d97706"/>
+                                    </Border>
 
-        <!-- 2. Card de Informações: Cliente -->
-        <Frame Grid.Row="1" BackgroundColor="#004aad" Padding="15" CornerRadius="8" HasShadow="False">
-            <VerticalStackLayout Spacing="3">
-                <Label x:Name="NumeroPedidoLabel" Text="Pedido #000" FontSize="16" FontAttributes="Bold" TextColor="White"/>
-                <Label x:Name="ClienteLabel" Text="Cliente: Carregando..." FontSize="14" FontAttributes="Bold" TextColor="#ffffff"/>
+                                    <Label Grid.Row="2" Grid.Column="0" Text="{Binding ProgressoSeparacaoTexto}" FontSize="11" TextColor="#64748b"/>
+
+                                    <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" BackgroundColor="{Binding BotaoSeparacaoCorFundo}" Padding="12,6" VerticalOptions="Center">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="8"/>
+                                        </Border.StrokeShape>
+                                        <Label Text="{Binding BotaoSeparacaoTexto}" TextColor="{Binding BotaoSeparacaoCorTexto}" FontAttributes="Bold" FontSize="12"/>
+                                    </Border>
+
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
             </VerticalStackLayout>
-        </Frame>
-
-        <!-- 3. Leitor de Código de Barras -->
-        <Grid Grid.Row="2" ColumnDefinitions="*, Auto" ColumnSpacing="10">
-            <Entry x:Name="CodigoBarraEntry" 
-                   Placeholder="Bipe ou digite o código do item..." 
-                   Completed="OnBiparCompleted" 
-                   ReturnType="Done"/>
-            <Button Grid.Column="1" 
-                    Text="Bipar" 
-                    Clicked="OnBiparClicked" 
-                    BackgroundColor="#0284c7" 
-                    TextColor="White"/>
-        </Grid>
-
-        <!-- 4. Lista de Itens -->
-        <CollectionView Grid.Row="3" x:Name="ItensCollectionView" SelectionMode="None">
-            <CollectionView.ItemTemplate>
-                <DataTemplate>
-                    <Frame Margin="0,4,0,8" Padding="12" CornerRadius="8" BorderColor="#cbd5e1" HasShadow="False">
-                        <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto" RowSpacing="5">
-
-                            <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="2">
-                                <Label Text="{Binding Nome}" FontAttributes="Bold" FontSize="15" TextColor="#1e293b"/>
-                                <Label Text="{Binding Localizacao, StringFormat='Loc: {0}'}" FontSize="12" TextColor="#d97706" FontAttributes="Bold"/>
-                            </VerticalStackLayout>
-
-                            <HorizontalStackLayout Grid.Row="1" Grid.Column="0" Spacing="4">
-                                <Label Text="Progresso:" FontSize="13" TextColor="#64748b"/>
-                                <Label Text="{Binding BipagensSeparacao}" FontSize="13" FontAttributes="Bold" TextColor="#0284c7"/>
-                                <Label Text="de" FontSize="13" TextColor="#64748b"/>
-                                <Label Text="{Binding Quantidade}" FontSize="13" FontAttributes="Bold" TextColor="#1e293b"/>
-                            </HorizontalStackLayout>
-
-                            <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="1"
-                                    Text="{Binding SeparacaoPendente, StringFormat='Faltam {0}'}" 
-                                    Clicked="OnBiparItemDiretoClicked"
-                                    CommandParameter="{Binding .}"
-                                    BackgroundColor="#004aad"
-                                    TextColor="White"
-                                    FontAttributes="Bold"
-                                    FontSize="12"
-                                    CornerRadius="6"
-                                    HeightRequest="44"
-                                    VerticalOptions="Center"/>
-                        </Grid>
-                    </Frame>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
-
+        </ScrollView>
+        <VerticalStackLayout Grid.Row="1" BackgroundColor="#f8fafc" Padding="20,10">
+            <Button Text="CANCELAR" Clicked="OnCancelarClicked" BackgroundColor="#fee2e2" TextColor="#ef4444" FontAttributes="Bold" HeightRequest="48" CornerRadius="14"/>
+        </VerticalStackLayout>
     </Grid>
 </ContentPage>

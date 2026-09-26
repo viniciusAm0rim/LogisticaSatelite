@@ -1,78 +1,149 @@
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="SpringApp.Views.ConferenciaItensPage"
-             Title="Conferir Itens">
+             NavigationPage.HasNavigationBar="False"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="#f8fafc">
 
-    <Grid RowDefinitions="Auto, Auto, Auto, *" Padding="15" RowSpacing="12">
+    <Grid RowDefinitions="*, Auto" RowSpacing="0">
+        <Entry x:Name="LeitorBluetoothEntry" IsVisible="False" Completed="OnCodigoScaneadoCompleted"/>
 
-        <!-- 1. Card Indicador Principal: Total de Itens a Conferir -->
-        <Frame Grid.Row="0" BackgroundColor="#f0fdf4" BorderColor="#16a34a" Padding="15" CornerRadius="8" HasShadow="False">
-            <Grid ColumnDefinitions="*, Auto">
-                <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
-                    <Label Text="TOTAL DE ITENS A CONFERIR" FontSize="11" TextColor="#15803d" FontAttributes="Bold"/>
-                    <Label x:Name="TotalRestanteLabel" Text="0 de 0" FontSize="26" FontAttributes="Bold" TextColor="#16a34a"/>
-                </VerticalStackLayout>
-                <Label Grid.Column="1" Text="🔍" FontSize="32" VerticalOptions="Center"/>
-            </Grid>
-        </Frame>
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout Padding="20,15" Spacing="15">
 
-        <!-- 2. Card de Informações: Cliente e Subtítulo (Separador) -->
-        <Frame Grid.Row="1" BackgroundColor="#004aad" Padding="15" CornerRadius="8" HasShadow="False">
-            <VerticalStackLayout Spacing="3">
-                <Label x:Name="NumeroPedidoLabel" Text="Pedido #000" FontSize="16" FontAttributes="Bold" TextColor="White"/>
-                <Label x:Name="ClienteLabel" Text="Cliente: Carregando..." FontSize="14" FontAttributes="Bold" TextColor="#ffffff"/>
-                <Label x:Name="SubtituloSeparadorLabel" Text="Separador: -" FontSize="12" TextColor="#cbd5e1"/>
-            </VerticalStackLayout>
-        </Frame>
+                <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="TituloPaginaLabel" Text="CONFERIR ITENS" FontSize="16" FontAttributes="Bold" TextColor="#0f172a" HorizontalTextAlignment="Center"/>
+                </Border>
 
-        <!-- 3. Leitor de Código de Barras -->
-        <Grid Grid.Row="2" ColumnDefinitions="*, Auto" ColumnSpacing="10">
-            <Entry x:Name="CodigoBarraEntry" 
-                   Placeholder="Bipe ou digite o item para conferir..." 
-                   Completed="OnBiparCompleted" 
-                   ReturnType="Done"/>
-            <Button Grid.Column="1" 
-                    Text="Conferir" 
-                    Clicked="OnBiparClicked" 
-                    BackgroundColor="#16a34a" 
-                    TextColor="White"/>
-        </Grid>
+                <!-- Cabeçalho do Pedido -->
+                <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="16">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16"/>
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto, Auto" RowSpacing="6">
+                        <Label Grid.Row="0" Grid.Column="0" Text="PEDIDO" FontSize="10" FontAttributes="Bold" TextColor="#94a3b8"/>
+                        <Border Grid.Row="0" Grid.Column="1" BackgroundColor="#dcfce7" Stroke="Transparent" Padding="10,4" HorizontalOptions="End">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8"/>
+                            </Border.StrokeShape>
+                            <Label x:Name="ModalLabel" Text="CLIENTE RETIRA" FontSize="11" FontAttributes="Bold" TextColor="#15803d"/>
+                        </Border>
+                        <Label x:Name="NumeroPedidoLabel" Grid.Row="1" Grid.Column="0" Text="#0001" FontSize="20" FontAttributes="Bold" TextColor="#0f172a"/>
+                        <Label x:Name="ClienteLabel" Grid.Row="2" Grid.ColumnSpan="2" Text="NOME DO CLIENTE" FontSize="14" FontAttributes="Bold" TextColor="#475569"/>
+                    </Grid>
+                </Border>
 
-        <!-- 4. Lista de Itens -->
-        <CollectionView Grid.Row="3" x:Name="ItensCollectionView" SelectionMode="None">
-            <CollectionView.ItemTemplate>
-                <DataTemplate>
-                    <Frame Margin="0,4,0,8" Padding="12" CornerRadius="8" BorderColor="#cbd5e1" HasShadow="False">
-                        <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto" RowSpacing="5">
-
-                            <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="2">
-                                <Label Text="{Binding Nome}" FontAttributes="Bold" FontSize="15" TextColor="#1e293b"/>
-                                <Label Text="{Binding Localizacao, StringFormat='Loc: {0}'}" FontSize="12" TextColor="#d97706" FontAttributes="Bold"/>
-                            </VerticalStackLayout>
-
-                            <HorizontalStackLayout Grid.Row="1" Grid.Column="0" Spacing="4">
-                                <Label Text="Progresso:" FontSize="13" TextColor="#64748b"/>
-                                <Label Text="{Binding BipagensConferencia}" FontSize="13" FontAttributes="Bold" TextColor="#16a34a"/>
-                                <Label Text="de" FontSize="13" TextColor="#64748b"/>
-                                <Label Text="{Binding Quantidade}" FontSize="13" FontAttributes="Bold" TextColor="#1e293b"/>
+                <!-- FASE 1: Bipagem de Itens (SKUs) -->
+                <VerticalStackLayout x:Name="ContainerItens" IsVisible="True" Spacing="15">
+                    <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="16,12">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16"/>
+                        </Border.StrokeShape>
+                        <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                            <Label Text="ITENS A CONFERIR" FontSize="11" FontAttributes="Bold" TextColor="#94a3b8" VerticalOptions="Center"/>
+                            <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                                <Label x:Name="TotalRestanteLabel" Text="0" FontSize="16" FontAttributes="Bold" TextColor="#0f172a"/>
+                                <Label Text="de" FontSize="14" TextColor="#64748b" VerticalOptions="Center"/>
+                                <Label x:Name="TotalGeralLabel" Text="0" FontSize="14" TextColor="#64748b" VerticalOptions="Center"/>
                             </HorizontalStackLayout>
-
-                            <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="1"
-                                    Text="{Binding ConferenciaPendente, StringFormat='Faltam {0}'}" 
-                                    Clicked="OnBiparItemDiretoClicked"
-                                    CommandParameter="{Binding .}"
-                                    BackgroundColor="#16a34a"
-                                    TextColor="White"
-                                    FontAttributes="Bold"
-                                    FontSize="12"
-                                    CornerRadius="6"
-                                    HeightRequest="44"
-                                    VerticalOptions="Center"/>
                         </Grid>
-                    </Frame>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+                    </Border>
 
+                    <Button Text="⌨ DIGITAR CÓDIGO (PRODUTO)" Clicked="OnDigitarCodigoManualClicked" BackgroundColor="#e0f2fe" TextColor="#0369a1" FontAttributes="Bold" FontSize="12" CornerRadius="12" HeightRequest="42"/>
+
+                    <CollectionView x:Name="ItensCollectionView" SelectionMode="None" HeightRequest="350">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,12" Padding="16" Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="16"/>
+                                    </Border.StrokeShape>
+                                    <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto, Auto" RowSpacing="4">
+                                        <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="0">
+                                            <Label Text="{Binding Nome}" FontAttributes="Bold" FontSize="14" TextColor="#0f172a"/>
+                                            <Label Text="{Binding CodItem, StringFormat='Cód: {0}'}" FontSize="11" TextColor="#64748b"/>
+                                        </VerticalStackLayout>
+                                        <Border Grid.Row="1" Grid.Column="0" BackgroundColor="#fef3c7" Stroke="Transparent" Padding="8,2" HorizontalOptions="Start" Margin="0,4,0,0">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="6"/>
+                                            </Border.StrokeShape>
+                                            <Label Text="{Binding LocalPicking}" FontSize="11" FontAttributes="Bold" TextColor="#d97706"/>
+                                        </Border>
+                                        <Label Grid.Row="2" Grid.Column="0" Text="{Binding ProgressoConferenciaTexto}" FontSize="11" TextColor="#64748b"/>
+                                        <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" BackgroundColor="{Binding BotaoConferenciaCorFundo}" Padding="12,6" VerticalOptions="Center">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="8"/>
+                                            </Border.StrokeShape>
+                                            <Label Text="{Binding BotaoConferenciaTexto}" TextColor="{Binding BotaoConferenciaCorTexto}" FontAttributes="Bold" FontSize="12"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- FASE 2: Bipagem de Volumes (Aparece após preencher a quantidade de caixas) -->
+                <VerticalStackLayout x:Name="ContainerVolumes" IsVisible="False" Spacing="15">
+                    <Border Stroke="#fde68a" StrokeThickness="2" BackgroundColor="#fef3c7" Padding="16">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12"/>
+                        </Border.StrokeShape>
+                        <Label Text="Confirme a identificação das caixas lendo as etiquetas de volume geradas." FontSize="13" TextColor="#b45309" HorizontalTextAlignment="Center" FontAttributes="Bold"/>
+                    </Border>
+
+                    <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="20">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16"/>
+                        </Border.StrokeShape>
+                        <VerticalStackLayout Spacing="12">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <Label Text="VOLUMES (CAIXAS)" FontSize="11" FontAttributes="Bold" TextColor="#94a3b8" VerticalOptions="Center"/>
+                                <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                                    <Label x:Name="VolumesLidosLabel" Text="0" FontSize="14" FontAttributes="Bold" TextColor="#0f172a"/>
+                                    <Label Text="de" FontSize="12" TextColor="#64748b" VerticalOptions="Center"/>
+                                    <Label x:Name="VolumesTotalLabel" Text="0" FontSize="12" TextColor="#64748b" VerticalOptions="Center"/>
+                                </HorizontalStackLayout>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Button Text="DIGITAR CÓDIGO" Clicked="OnDigitarCodigoManualClicked" BackgroundColor="#e0f2fe" TextColor="#0369a1" FontAttributes="Bold" FontSize="12" CornerRadius="12" HeightRequest="42"/>
+
+                    <CollectionView x:Name="VolumesCollectionView" SelectionMode="None" HeightRequest="250">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,12" Padding="16" Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="16"/>
+                                    </Border.StrokeShape>
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center" Spacing="2">
+                                            <!-- Mostra se está aguardando ou o código que foi lido -->
+                                            <Label Text="{Binding ExibicaoNome}" FontAttributes="Bold" FontSize="14" TextColor="#0f172a"/>
+                                        </VerticalStackLayout>
+                                        <Border Grid.Column="1" BackgroundColor="{Binding CorFundo}" Padding="12,6" VerticalOptions="Center">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="8"/>
+                                            </Border.StrokeShape>
+                                            <Label Text="{Binding StatusTexto}" TextColor="{Binding CorTexto}" FontAttributes="Bold" FontSize="12"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <VerticalStackLayout Grid.Row="1" BackgroundColor="#f8fafc" Padding="20,10">
+            <Button Text="CANCELAR" Clicked="OnCancelarClicked" BackgroundColor="#fee2e2" TextColor="#ef4444" FontAttributes="Bold" HeightRequest="48" CornerRadius="14"/>
+        </VerticalStackLayout>
     </Grid>
 </ContentPage>

@@ -1,32 +1,138 @@
-<?xml version="1.0" encoding="utf-8" ?>
+
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="SpringApp.Views.LoginPage"
-             Title="Login - Logística Satélite">
+             NavigationPage.HasNavigationBar="False"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="#111827">
 
-    <VerticalStackLayout Padding="30" Spacing="20" VerticalOptions="Center">
+    <Grid Padding="20">
+        <Border Stroke="Transparent"
+                BackgroundColor="White"
+                Padding="25,30"
+                HorizontalOptions="Center"
+                VerticalOptions="Center"
+                WidthRequest="340">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20" />
+            </Border.StrokeShape>
 
-        <Label Text="📦" FontSize="60" HorizontalOptions="Center"/>
-        <Label Text="SATÉLITE" FontSize="24" FontAttributes="Bold" TextColor="#004aad" HorizontalOptions="Center"/>
-        <Label Text="Logística Paperless" FontSize="14" TextColor="Gray" HorizontalOptions="Center" Margin="0,0,0,20"/>
+            <VerticalStackLayout Spacing="20">
 
-        <VerticalStackLayout Spacing="5">
-            <Label Text="Matrícula" FontSize="12" FontAttributes="Bold" TextColor="#475569"/>
-            <Entry x:Name="MatriculaEntry" Placeholder="Ex: 1" Keyboard="Numeric" />
-        </VerticalStackLayout>
+                <Image Source="box.png" 
+                       HeightRequest="70" 
+                       WidthRequest="70" 
+                       HorizontalOptions="Center" />
 
-        <VerticalStackLayout Spacing="5">
-            <Label Text="Senha" FontSize="12" FontAttributes="Bold" TextColor="#475569"/>
-            <Entry x:Name="SenhaEntry" Placeholder="••••" IsPassword="True" />
-        </VerticalStackLayout>
+                <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                    <Label Text="MapLog" 
+                           FontSize="32" 
+                           FontAttributes="Bold" 
+                           TextColor="#0a192f" 
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="Mapeamento e Gestão Logística" 
+                           FontSize="13" 
+                           TextColor="#334155" 
+                           HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
 
-        <Button Text="Entrar no Sistema" 
-                Clicked="OnLoginClicked" 
-                BackgroundColor="#004aad" 
-                TextColor="White" 
-                HeightRequest="48"
-                CornerRadius="8"
-                Margin="0,10,0,0"/>
+                <Grid Margin="0,10,0,0">
+                    <Border Stroke="#cbd5e1" 
+                            StrokeThickness="1" 
+                            Padding="12,0" 
+                            HeightRequest="52" 
+                            BackgroundColor="#f8fafc"
+                            Margin="0,8,0,0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12" />
+                        </Border.StrokeShape>
 
-    </VerticalStackLayout>
+                        <Grid ColumnDefinitions="Auto, *">
+                            <Label Grid.Column="0" Text="" FontSize="18" VerticalOptions="Center" Margin="0,0,8,0" />
+                            <Entry Grid.Column="1" 
+                                   x:Name="MatriculaEntry" 
+                                   Placeholder="Digite sua Matrícula" 
+                                   PlaceholderColor="#94a3b8" 
+                                   TextColor="#0f172a" 
+                                   FontSize="14"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Label Text="Digite sua Matrícula" 
+                           FontSize="11" 
+                           TextColor="#64748b" 
+                           BackgroundColor="#f8fafc" 
+                           Padding="4,0" 
+                           Margin="16,0,0,0" 
+                           HorizontalOptions="Start" 
+                           VerticalOptions="Start" />
+                </Grid>
+
+                <Grid>
+                    <Border Stroke="#cbd5e1" 
+                            StrokeThickness="1" 
+                            Padding="12,0" 
+                            HeightRequest="52" 
+                            BackgroundColor="#f8fafc"
+                            Margin="0,8,0,0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12" />
+                        </Border.StrokeShape>
+
+                        <Grid ColumnDefinitions="Auto, *">
+                            <Label Grid.Column="0" Text="" FontSize="18" VerticalOptions="Center" Margin="0,0,8,0" />
+                            <Entry Grid.Column="1" 
+                                   x:Name="SenhaEntry" 
+                                   IsPassword="True" 
+                                   Placeholder="****** sua Senha" 
+                                   PlaceholderColor="#94a3b8" 
+                                   TextColor="#0f172a" 
+                                   FontSize="14"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Label Text="Digite sua Senha" 
+                           FontSize="11" 
+                           TextColor="#64748b" 
+                           BackgroundColor="#f8fafc" 
+                           Padding="4,0" 
+                           Margin="16,0,0,0" 
+                           HorizontalOptions="Start" 
+                           VerticalOptions="Start" />
+                </Grid>
+
+                <Label Text="Esqueci minha senha?" 
+                       FontSize="13" 
+                       TextColor="#334155" 
+                       HorizontalOptions="End" 
+                       Margin="0,-5,0,5">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnEsqueciSenhaTapped" />
+                    </Label.GestureRecognizers>
+                </Label>
+
+                <!-- BOTÃO E SPINNER COM NOME APROPRIADO -->
+                <Grid HeightRequest="48">
+                    <Button x:Name="EntrarBtn"
+                            Text="ENTRAR NO SISTEMA" 
+                            Clicked="OnEntrarClicked" 
+                            BackgroundColor="#2563eb" 
+                            TextColor="White" 
+                            FontAttributes="Bold" 
+                            FontSize="13"
+                            CornerRadius="12" />
+
+                    <ActivityIndicator x:Name="LoadingSpinner" 
+                                       IsRunning="False" 
+                                       IsVisible="False" 
+                                       Color="White" 
+                                       HorizontalOptions="Center" 
+                                       VerticalOptions="Center" />
+                </Grid>
+
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
 </ContentPage>

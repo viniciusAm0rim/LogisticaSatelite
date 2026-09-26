@@ -6,14 +6,15 @@ namespace SpringApp.Views;
 
 public partial class MainPage : ContentPage
 {
-    private readonly PedidoService _pedidoService;
+    private readonly MockPedidoService _pedidoService; //MOCKPEDIDOSERVICE É APENAS PARA TESTE 
     private string _statusAtualFiltro = "Aguardando";
     private readonly int _perfilLogado;
+    private List<Pedido> _pedidosAnteriores = new(); // Lista auxiliar para a aba retrátil
 
     public MainPage()
     {
         InitializeComponent();
-        _pedidoService = new PedidoService();
+        _pedidoService = new MockPedidoService();
 
         string matriculaSalva = Preferences.Get("MatriculaLogada", "3");
 
@@ -31,52 +32,35 @@ public partial class MainPage : ContentPage
         await CarregarPedidosAsync();
     }
 
-    // --- REGRAS DE NEGÓCIO DOS PERFIS ---
     private void AplicarRegrasDeAcessoPorPerfil()
     {
-        AbasGrid.ColumnDefinitions.Clear();
-
         if (_perfilLogado == 1)
         {
-            ConfigurarAba(AbaSeparacaoBtn, true);
-            ConfigurarAba(AbaConferenciaBtn, false);
-            ConfigurarAba(AbaAbastecimentoBtn, true);
-            ConfigurarAba(AbaExpedicaoBtn, true);
+            AbaSeparacaoBtn.IsVisible = true;
+            AbaConferenciaBtn.IsVisible = false;
+            AbaExpedicaoBtn.IsVisible = true;
             _statusAtualFiltro = "Aguardando";
             AtualizarVisualAbas(AbaSeparacaoBtn);
         }
         else if (_perfilLogado == 2)
         {
-            ConfigurarAba(AbaSeparacaoBtn, false);
-            ConfigurarAba(AbaConferenciaBtn, true);
-            ConfigurarAba(AbaAbastecimentoBtn, true);
-            ConfigurarAba(AbaExpedicaoBtn, true);
+            AbaSeparacaoBtn.IsVisible = false;
+            AbaConferenciaBtn.IsVisible = true;
+            AbaExpedicaoBtn.IsVisible = true;
             _statusAtualFiltro = "Aguardando Conferencia";
             AtualizarVisualAbas(AbaConferenciaBtn);
         }
         else
         {
-            ConfigurarAba(AbaSeparacaoBtn, true);
-            ConfigurarAba(AbaConferenciaBtn, true);
-            ConfigurarAba(AbaAbastecimentoBtn, true);
-            ConfigurarAba(AbaExpedicaoBtn, true);
+            AbaSeparacaoBtn.IsVisible = true;
+            AbaConferenciaBtn.IsVisible = true;
+            AbaExpedicaoBtn.IsVisible = true;
             _statusAtualFiltro = "Aguardando";
             AtualizarVisualAbas(AbaSeparacaoBtn);
         }
     }
 
-    private void ConfigurarAba(Button aba, bool visivel)
-    {
-        aba.IsVisible = visivel;
-        if (visivel)
-        {
-            Grid.SetColumn(aba, AbasGrid.ColumnDefinitions.Count);
-            AbasGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star });
-        }
-    }
-
-    // --- MENU DE PERFIL ---
-    private async void OnPerfilTapped(object sender, TappedEventArgs e)
+    private async void OnPerfilClicked(object sender, EventArgs e)
     {
         string nomePerfil = _perfilLogado switch
         {
@@ -87,39 +71,66 @@ public partial class MainPage : ContentPage
             _ => "Usuário Padrão"
         };
 
-        string acao = await DisplayActionSheet($"Perfil Ativo: {nomePerfil}", "Cancelar", "Sair da Conta");
+        string acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", "Sair da Conta");
 
         if (acao == "Sair da Conta")
         {
             Preferences.Remove("MatriculaLogada");
-            Application.Current.MainPage = new LoginPage();
+            Application.Current.MainPage = new NavigationPage(new LoginPage());
         }
     }
 
-    // --- SINCRONIZAÇÃO ---
     private async void OnSincronizarClicked(object sender, EventArgs e)
     {
         await ExecutarComLoadingAsync(SincronizarBtn, "Buscando...", async () =>
         {
-            await Task.Delay(1500);
             await CarregarPedidosAsync();
         });
     }
 
-    // --- GERENCIAMENTO DA LISTA ---
     private async Task CarregarPedidosAsync()
     {
-        var pedidos = await _pedidoService.ObterPorStatusAsync(_statusAtualFiltro);
-        PedidosCollectionView.ItemsSource = pedidos;
-        AtualizarRefreshView.IsRefreshing = false;
+        // 1. Carrega os pedidos da fila ativa principal
+        var pedidosAtivos = await _pedidoService.ObterPorStatusAsync(_statusAtualFiltro);
+        PedidosCollectionView.ItemsSource = pedidosAtivos;
+
+        // 2. Carrega e filtra o histórico dinâmico de acordo com a Aba atual
+        var todosPedidos = await _pedidoService.GetPedidosAsync();
+
+        if (_statusAtualFiltro == "Aguardando") // Aba Separação
+        {
+            _pedidosAnteriores = todosPedidos.Where(p => p.Status != "Aguardando" && p.Status != "Em Separaçao").ToList();
+        }
+        else if (_statusAtualFiltro == "Aguardando Conferencia") // Aba Conferência
+        {
+            _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Aguardando Expediçao" || p.Status == "Expedido" || p.Status == "Finalizado").ToList();
+        }
+        else if (_statusAtualFiltro == "Aguardando Expediçao") // Aba Expedição
+        {
+            _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Expedido" || p.Status == "Finalizado").ToList();
+        }
+
+        BindableLayout.SetItemsSource(ListaPedidosAnteriores, _pedidosAnteriores);
     }
 
-    private async void OnRefreshing(object sender, EventArgs e)
+    // Controle de Clique na Aba Retrátil (Histórico)
+    private void OnTogglePedidosAnterioresTapped(object sender, TappedEventArgs e)
     {
-        await CarregarPedidosAsync();
+        ListaPedidosAnteriores.IsVisible = !ListaPedidosAnteriores.IsVisible;
+        SetaPedidosAnteriores.Text = ListaPedidosAnteriores.IsVisible ? "▲" : "▼";
     }
 
-    // --- NAVEGAÇÃO ENTRE ABAS ---
+    // Controle de expansão de cada item do histórico
+    private void OnPedidoAnteriorItemTapped(object sender, TappedEventArgs e)
+    {
+        if (sender is Border border && border.BindingContext is Pedido pedidoTapped)
+        {
+            pedidoTapped.IsExpanded = !pedidoTapped.IsExpanded;
+            BindableLayout.SetItemsSource(ListaPedidosAnteriores, null);
+            BindableLayout.SetItemsSource(ListaPedidosAnteriores, _pedidosAnteriores);
+        }
+    }
+
     private async void OnAbaClicked(object sender, EventArgs e)
     {
         if (sender is Button abaClicada && abaClicada.CommandParameter is string status)
@@ -134,31 +145,34 @@ public partial class MainPage : ContentPage
 
     private void AtualizarVisualAbas(Button abaAtiva)
     {
-        Button[] abas = { AbaSeparacaoBtn, AbaConferenciaBtn, AbaAbastecimentoBtn, AbaExpedicaoBtn };
-
-        foreach (var aba in abas)
+        var mapaAbas = new (Button Botao, BoxView Linha)[]
         {
-            if (aba == abaAtiva)
+            (AbaSeparacaoBtn, LinhaSeparacao),
+            (AbaConferenciaBtn, LinhaConferencia),
+            (AbaExpedicaoBtn, LinhaExpedicao)
+        };
+
+        foreach (var item in mapaAbas)
+        {
+            if (item.Botao == abaAtiva)
             {
-                aba.BackgroundColor = Color.FromArgb("#004aad");
-                aba.TextColor = Colors.White;
+                item.Botao.TextColor = Color.FromArgb("#2563eb");
+                item.Linha.Color = Color.FromArgb("#2563eb");
             }
             else
             {
-                aba.BackgroundColor = Color.FromArgb("#e2e8f0");
-                aba.TextColor = Color.FromArgb("#475569");
+                item.Botao.TextColor = Color.FromArgb("#64748b");
+                item.Linha.Color = Colors.Transparent;
             }
         }
     }
 
-    // --- TRANSIÇÃO DE PEDIDOS ---
     private async void OnIniciarAcaoClicked(object sender, EventArgs e)
     {
         if (sender is Button button && button.CommandParameter is Pedido pedidoSelecionado)
         {
             await ExecutarComLoadingAsync(button, "Aguarde...", async () =>
             {
-                // Separação e Conferência alteram o status logo ao iniciar
                 if (pedidoSelecionado.Status.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
                 {
                     var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(pedidoSelecionado.Id, pedidoSelecionado.Status);
@@ -185,20 +199,14 @@ public partial class MainPage : ContentPage
                         await DisplayAlert("Erro", mensagem, "OK");
                     }
                 }
-                // Expedição apenas navega, pois a alteração para "Expedido" ocorre após baixar os volumes na tela seguinte
                 else if (pedidoSelecionado.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase))
                 {
                     await Navigation.PushAsync(new ExpedicaoItensPage(pedidoSelecionado));
-                }
-                else
-                {
-                    await CarregarPedidosAsync();
                 }
             });
         }
     }
 
-    // --- EFEITOS VISUAIS DE LOADING ---
     private async Task ExecutarComLoadingAsync(Button botao, string textoLoading, Func<Task> acao)
     {
         if (!botao.IsEnabled) return;
@@ -208,10 +216,7 @@ public partial class MainPage : ContentPage
         botao.IsEnabled = false;
         botao.Opacity = 0.7;
 
-        try
-        {
-            await acao();
-        }
+        try { await acao(); }
         finally
         {
             botao.Text = textoOriginal;
