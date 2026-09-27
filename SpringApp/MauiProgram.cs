@@ -1,28 +1,48 @@
 ﻿using Microsoft.Extensions.Logging;
 using SpringApp.Services;
+using SpringApp.Views; // Certifique-se de importar o namespace das suas views
 
 namespace SpringApp
 {
     public static class MauiProgram
     {
-        public static MauiApp CreateMauiApp()// inicializa a aplicação MAUI, configurando serviços, fontes e dependências necessárias para o funcionamento do aplicativo.
+        public static MauiApp CreateMauiApp()
         {
-            var builder = MauiApp.CreateBuilder(); // Cria uma instância do builder para configurar a aplicação MAUI, permitindo adicionar serviços, fontes e outras configurações antes de construir o aplicativo final.
+            var builder = MauiApp.CreateBuilder();
             builder
                 .UseMauiApp<App>()
                 .ConfigureFonts(fonts =>
                 {
-                    fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular"); // Adiciona a fonte OpenSans-Regular.ttf com o alias "OpenSansRegular"
-                    fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");// Adiciona a fonte OpenSans-Semibold.ttf com o alias "OpenSansSemibold"
+                    fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
+                    fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
                 });
 
-            
-            builder.Services.AddSingleton(sp => new HttpClient // Adiciona uma instância singleton do HttpClient ao contêiner de serviços, permitindo que a mesma instância seja compartilhada em todo o aplicativo, evitando a criação de múltiplas instâncias e melhorando o desempenho.
+            builder.Services.AddSingleton(sp => new HttpClient
             {
-                BaseAddress = new Uri("https://localhost:44379") //Indica a URL base da API que será consumida pelo aplicativo, permitindo que todas as solicitações HTTP feitas pelo HttpClient usem essa URL como ponto de partida.
+                BaseAddress = new Uri("https://localhost:44379")
             });
 
-            builder.Services.AddSingleton<ApiServices>();
+            // =================================================================
+            // CHAVE DE ALTERNÂNCIA ENTRE MOCK E API REAL
+            // true  -> Usa o Mock (Testes Locais)
+            // false -> Usa a API Real (Banco de Dados)
+            // =================================================================
+            const bool usarMockLocal = true;
+
+            if (usarMockLocal)
+            {
+                builder.Services.AddSingleton<IPedidoService, MockPedidoService>();
+            }
+            else
+            {
+                builder.Services.AddSingleton<IPedidoService, PedidoService>();
+            }
+
+            // Registrar as páginas para que recebam a injeção automaticamente
+            builder.Services.AddTransient<MainPage>();
+            builder.Services.AddTransient<GestaoSupervisorPage>();
+            // Se tiver outras páginas que usam o IPedidoService, registre-as aqui também, ex:
+            // builder.Services.AddTransient<SeparacaoItensPage>();
 
             return builder.Build();
         }

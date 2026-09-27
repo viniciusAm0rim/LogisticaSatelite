@@ -12,44 +12,12 @@ public partial class LoginPage : ContentPage
         _authService = new AuthService();
     }
 
-    /* Bloco original
-     * 
-     * private async void OnEntrarClicked(object sender, EventArgs e)
-    {
-        string matricula = MatriculaEntry.Text?.Trim() ?? string.Empty;
-        string senha = SenhaEntry.Text?.Trim() ?? string.Empty;
-
-        // Validante no frontend antes de bater na API
-        if (string.IsNullOrEmpty(matricula) || string.IsNullOrEmpty(senha))
-        {
-            await DisplayAlert("Atenção", "Por favor, informe a matrícula e a senha.", "OK");
-            return;
-        }
-
-        SetLoadingState(true);
-
-        // Dispara a validação real do usuário na API (banco SQLite)
-        var (sucesso, mensagem) = await _authService.RealizarLoginAsync(matricula, senha);
-
-        SetLoadingState(false);
-
-        if (sucesso)
-        {
-            // Avança para a tela principal (MainPage / AppShell)
-            Application.Current.MainPage = new NavigationPage(new MainPage());
-        }
-        else
-        {
-            await DisplayAlert("Acesso Negado", mensagem, "OK");
-        }
-    }*/
-
     private async void OnEntrarClicked(object sender, EventArgs e)
     {
         string matricula = MatriculaEntry.Text?.Trim() ?? string.Empty;
         string senha = SenhaEntry.Text?.Trim() ?? string.Empty;
 
-        // Validante no frontend antes de bater na API
+        // Validação no frontend antes de bater na API
         if (string.IsNullOrEmpty(matricula) || string.IsNullOrEmpty(senha))
         {
             await DisplayAlert("Atenção", "Por favor, informe a matrícula e a senha.", "OK");
@@ -70,6 +38,12 @@ public partial class LoginPage : ContentPage
             Preferences.Set("MatriculaLogada", "3"); // Perfil Híbrido
             sucesso = true;
         }
+        else if (matricula.Equals("supervisor@teste.com", StringComparison.OrdinalIgnoreCase) && senha == "1234")
+        {
+            Preferences.Set("UsuarioNome", "Gestão/Supervisor");
+            Preferences.Set("MatriculaLogada", "4"); // Perfil Supervisor
+            sucesso = true;
+        }
         else
         {
             // Fluxo normal da API / Banco real
@@ -83,8 +57,19 @@ public partial class LoginPage : ContentPage
 
         if (sucesso)
         {
-            // Avança para a tela principal (MainPage / AppShell)
-            Application.Current.MainPage = new NavigationPage(new MainPage());
+            string perfilLogado = Preferences.Get("MatriculaLogada", "");
+
+            // CORREÇÃO: Pede ao Injetor de Dependência do MAUI para criar a MainPage já com o serviço certo
+            var mainPage = Handler.MauiContext.Services.GetService<MainPage>();
+
+            if (perfilLogado == "4")
+            {
+                Application.Current.MainPage = new NavigationPage(mainPage);
+            }
+            else
+            {
+                Application.Current.MainPage = new NavigationPage(mainPage);
+            }
         }
         else
         {

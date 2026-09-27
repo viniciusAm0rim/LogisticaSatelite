@@ -16,27 +16,28 @@ public class VolumeExpedicao
 public partial class ExpedicaoItensPage : ContentPage
 {
     private readonly Pedido _pedido;
-    private readonly MockPedidoService _pedidoService;
+    private readonly IPedidoService _pedidoService;
     private bool _isFinalizando = false;
+    private int _errosEvitados = 0; // <-- Variável para acumular os erros da expedição
     private List<VolumeExpedicao> _listaVolumes;
 
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
-    public ExpedicaoItensPage(Pedido pedido)
+    public ExpedicaoItensPage(Pedido pedido, IPedidoService pedidoService)
     {
         InitializeComponent();
         _pedido = pedido;
-        _pedidoService = new MockPedidoService();
+        _pedidoService = pedidoService;
         _listaVolumes = new List<VolumeExpedicao>();
 
         CarregarDados();
-        GerarVolumesVirtuais();
+        _ = GerarVolumesDoBancoAsync();
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        await _pedidoService.BloquearPedidoAsync(_pedido.Id, _usuarioLogado);
+        await _pedidoService.BloquearPedidoAsync(_pedido.IdPedido, _usuarioLogado);
         Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
     }
 
@@ -44,26 +45,26 @@ public partial class ExpedicaoItensPage : ContentPage
 
     private void CarregarDados()
     {
-        NumeroPedidoLabel.Text = $"#{_pedido.Id:D4}";
-        ClienteLabel.Text = (_pedido.Destinatario ?? "").ToUpper();
+        NumeroPedidoLabel.Text = $"#{_pedido.IdPedido:D4}";
+        ClienteLabel.Text = (_pedido.Cliente ?? "").ToUpper();
         ModalLabel.Text = string.IsNullOrEmpty(_pedido.Modal) ? "PADRÃO" : _pedido.Modal.ToUpper();
     }
 
-    private void GerarVolumesVirtuais()
+    private async Task GerarVolumesDoBancoAsync()
     {
         _listaVolumes.Clear();
+        var pedidoAtualizado = await _pedidoService.GetPedidoPorIdAsync(_pedido.IdPedido);
 
-        // Busca no dicionário os códigos reais que foram colados nas caixas
-        if (MockPedidoService.CodigosDosVolumes.TryGetValue(_pedido.Id, out var codigosLidosNaConferencia))
+        if (pedidoAtualizado?.VolumesPedidos != null && pedidoAtualizado.VolumesPedidos.Any())
         {
             int i = 1;
-            foreach (var codLido in codigosLidosNaConferencia)
+            foreach (var vol in pedidoAtualizado.VolumesPedidos)
             {
                 _listaVolumes.Add(new VolumeExpedicao
                 {
-                    CodigoEsperado = codLido,
-                    ExibicaoNome = $"Caixa {i} de {codigosLidosNaConferencia.Count}",
-                    Bipado = false
+                    CodigoEsperado = vol.CodigoVolume,
+                    ExibicaoNome = $"Volume: {vol.CodigoVolume}",
+                    Bipado = vol.BipadoExpedicao
                 });
                 i++;
             }
@@ -105,11 +106,13 @@ public partial class ExpedicaoItensPage : ContentPage
             }
             else
             {
+                _errosEvitados++; // <-- Tentou bipar volume já bipado
                 DisplayAlert("Aviso", "Este volume já foi lido!", "OK");
             }
         }
         else
         {
+            _errosEvitados++; // <-- Tentou bipar volume incorreto ou que não pertence ao pedido
             DisplayAlert("Erro", $"Código '{codigo}' não pertence a este pedido.", "OK");
         }
     }
@@ -144,7 +147,8 @@ public partial class ExpedicaoItensPage : ContentPage
         if (_isFinalizando) return;
         _isFinalizando = true;
 
-        var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(_pedido.Id, _pedido.Status, _usuarioLogado);
+        // Envia os erros acumulados na expedição junto com a conclusão
+        var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(_pedido.IdPedido, _pedido.Status, _usuarioLogado, _errosEvitados);
         if (sucesso)
         {
             await DisplayAlert("Sucesso", "Expedição concluída!", "OK");

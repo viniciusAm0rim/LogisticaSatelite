@@ -1,29 +1,63 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.Text.Json.Serialization;
 
 namespace SpringApp.Models;
 
 public class Pedido
 {
-    public int Id { get; set; }
-    public string Destinatario { get; set; }
+    [JsonPropertyName("id")]
+    public int IdPedido { get; set; }
+
+    [JsonPropertyName("destinatario")]
+    public string Cliente { get; set; }
+
+    [JsonPropertyName("modal")]
     public string Modal { get; set; }
-    public string Status { get; set; }
+
+    [JsonPropertyName("nomeTransportadora")]
+    public string NomeTransportadora { get; set; }
+
+    [JsonPropertyName("codTransportadora")]
+    public string CodTransportadora { get; set; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "Aguardando";
+
+    [JsonPropertyName("volumes")]
     public int Volumes { get; set; }
 
-    public string SepUser { get; set; }
-    public string ConfUser { get; set; }
-    public string ExpUser { get; set; }
+    [JsonPropertyName("errosEvitados")]
+    public int ErrosEvitados { get; set; }
 
-    // NO APP MAUI (Models/Pedido.cs)
-    public DateTime? SepData { get; set; }
-    public DateTime? ConfData { get; set; }
-    public DateTime? ExpData { get; set; }
+    [JsonPropertyName("sepUser")] public string SepUser { get; set; }
+    [JsonPropertyName("confUser")] public string ConfUser { get; set; }
+    [JsonPropertyName("expUser")] public string ExpUser { get; set; }
 
+    [JsonPropertyName("sepInicioData")] public DateTime? SepInicioData { get; set; }
+    [JsonPropertyName("sepFimData")] public DateTime? SepFimData { get; set; }
+
+    [JsonPropertyName("confInicioData")] public DateTime? ConfInicioData { get; set; }
+    [JsonPropertyName("confFimData")] public DateTime? ConfFimData { get; set; }
+
+    [JsonPropertyName("expInicioData")] public DateTime? ExpInicioData { get; set; }
+    [JsonPropertyName("expFimData")] public DateTime? ExpFimData { get; set; }
+
+    [JsonPropertyName("volumesPedidos")]
+    public List<VolumePedidoDto> VolumesPedidos { get; set; } = new();
+
+    [JsonPropertyName("itens")]
     public List<ItemPedido> Itens { get; set; } = new();
 
-    [NotMapped]
-    public bool IsExpanded { get; set; }
+    [JsonIgnore] public bool IsExpanded { get; set; }
+}
 
-    [NotMapped]
-    public string ProgressoExpedicaoTexto { get; set; }
+public class VolumePedidoDto
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("codigoVolume")]
+    public string CodigoVolume { get; set; }
+
+    [JsonPropertyName("bipadoExpedicao")]
+    public bool BipadoExpedicao { get; set; }
 }

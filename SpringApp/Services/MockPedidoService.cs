@@ -1,50 +1,48 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using SpringApp.Models;
+﻿using SpringApp.Models;
 
 namespace SpringApp.Services;
 
-public class MockPedidoService
+public class MockPedidoService : IPedidoService
 {
-    // ====================================================================================
-    // MEMÓRIA VIRTUAL: Guarda as etiquetas reais bipadas na Conferência para a Expedição
-    // ====================================================================================
-    public static Dictionary<int, List<string>> CodigosDosVolumes = new Dictionary<int, List<string>>();
-
-    // ====================================================================================
-    // BANCO DE DADOS FALSO (Mock)
-    // ====================================================================================
     private static List<Pedido> _pedidosMock = new List<Pedido>
     {
+        // Pedido 1 (Loja)
         new Pedido
- {
-     Id = 0001,
-     Destinatario = "PROTOTIPO TESTE",
-     Modal = "RETIRA",
-     Status = "Aguardando",
-     Volumes = 0,
-     SepUser = null, ConfUser = null, ExpUser = null,
-     Itens = new List<ItemPedido>
-     {
-         new ItemPedido
-         {
-             Id = 1, CodItem = "001", Nome = "CCBI10/2-5MXA",
-             LocalPicking = "R1-A-01", Quantidade = 2, BipagensSeparacao = 0, BipagensConferencia = 0
-         },
-         new ItemPedido
-         {
-             Id = 2, CodItem = "002", Nome = "CPLI10/2-5MXB",
-             LocalPicking = "R2-A-02", Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0
-         }
-     }
- }
+        {
+            IdPedido = 1,
+            Cliente = "Vinicius Ferreira Amorim",
+            Modal = "Loja",
+            NomeTransportadora = "Logística Rápida Expresso",
+            CodTransportadora = "CTR-99",
+            Status = "Aguardando",
+            Volumes = 0,
+            Itens = new List<ItemPedido>
+            {
+                new ItemPedido { ProdutoId = 1, CodItem = "SKU-001", LocalPicking = "R1-A-01", Quantidade = 2 },
+                new ItemPedido { ProdutoId = 2, CodItem = "SKU-002", LocalPicking = "R2-A-02", Quantidade = 1 }
+            }
+        },
+
+        // Pedido 2 (Retira)
+        new Pedido
+        {
+            IdPedido = 2,
+            Cliente = "Thaís Martins",
+            Modal = "Retira",
+            NomeTransportadora = "Retirada Local",
+            CodTransportadora = "CTR-00",
+            Status = "Aguardando",
+            Volumes = 0,
+            Itens = new List<ItemPedido>
+            {
+                new ItemPedido { ProdutoId = 3, CodItem = "SKU-003", LocalPicking = "R3-C-10", Quantidade = 5 }
+            }
+        }
     };
 
     public async Task<List<Pedido>> GetPedidosAsync()
     {
-        await Task.Delay(300); // Simula o tempo de carregamento da internet
+        await Task.Delay(300);
         return _pedidosMock;
     }
 
@@ -57,7 +55,7 @@ public class MockPedidoService
     public async Task<Pedido> GetPedidoPorIdAsync(int id)
     {
         await Task.Delay(200);
-        return _pedidosMock.FirstOrDefault(p => p.Id == id);
+        return _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
     }
 
     public async Task<(bool Sucesso, string Mensagem)> BloquearPedidoAsync(int id, string usuario)
@@ -66,10 +64,10 @@ public class MockPedidoService
         return (true, string.Empty);
     }
 
-    public async Task<(bool Sucesso, string Mensagem)> AvancarEtapaAsync(int id, string etapaAtual, string usuario = null)
+    public async Task<(bool Sucesso, string Mensagem)> AvancarEtapaAsync(int id, string etapaAtual, string usuario = null, int errosEvitados = 0)
     {
         await Task.Delay(500);
-        var mock = _pedidosMock.FirstOrDefault(p => p.Id == id);
+        var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
         if (mock == null) return (false, "Pedido não encontrado.");
 
         DateTime dataHoraAtual = DateTime.Now;
@@ -77,60 +75,111 @@ public class MockPedidoService
         if (mock.Status == "Aguardando")
         {
             mock.Status = "Em Separaçao";
+            mock.SepInicioData = dataHoraAtual;
         }
         else if (mock.Status == "Em Separaçao")
         {
             mock.Status = "Aguardando Conferencia";
             mock.SepUser = usuario;
-            mock.SepData = dataHoraAtual;
+            mock.SepFimData = dataHoraAtual;
+            mock.ErrosEvitados += errosEvitados;
         }
         else if (mock.Status == "Aguardando Conferencia")
         {
             mock.Status = "Em Conferencia";
+            mock.ConfInicioData = dataHoraAtual;
         }
         else if (mock.Status == "Aguardando Expediçao")
         {
             mock.Status = "Expedido";
             mock.ExpUser = usuario;
-            mock.ExpData = dataHoraAtual;
+            mock.ExpFimData = dataHoraAtual;
+            mock.ErrosEvitados += errosEvitados;
         }
 
         return (true, "Sucesso");
     }
 
-    // ====================================================================================
-    // CONCLUIR CONFERÊNCIA (Recebe a lista de códigos reais colados nas caixas)
-    // ====================================================================================
-    public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, List<string> codigosVolumes, string usuario)
+    // GERAÇÃO AUTOMÁTICA DOS CÓDIGOS DE VOLUME NO MOCK (Ex: c1p1v1)
+    public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, string usuario = null, int errosEvitados = 0)
     {
         await Task.Delay(500);
-        var mock = _pedidosMock.FirstOrDefault(p => p.Id == id);
+        var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
         if (mock == null) return (false, "Pedido não encontrado.");
 
         mock.Status = "Aguardando Expediçao";
-        mock.Volumes = codigosVolumes.Count; // O número de caixas é o tamanho da lista bipada
+        mock.Volumes = volumes;
         mock.ConfUser = usuario;
-        mock.ConfData = DateTime.Now;
+        mock.ConfFimData = DateTime.Now;
+        mock.ErrosEvitados += errosEvitados;
 
-        // Salva os códigos reais no dicionário em memória para a Expedição ler depois
-        CodigosDosVolumes[id] = codigosVolumes;
+        // Limpa volumes anteriores e gera os novos automaticamente no formato c{ClienteId}p{PedidoId}v{i}
+        mock.VolumesPedidos.Clear();
+        int clienteId = 1; // ID simulado para o cliente no mock
+
+        for (int i = 1; i <= volumes; i++)
+        {
+            mock.VolumesPedidos.Add(new VolumePedidoDto
+            {
+                Id = i,
+                CodigoVolume = $"c{clienteId}p{mock.IdPedido}v{i}",
+                BipadoExpedicao = false
+            });
+        }
 
         return (true, "Sucesso");
+    }
+
+    public async Task<string?> BaixarRelatorioProdutividadeAsync(string operadorFiltro)
+    {
+        await Task.Delay(500);
+        string fileName = $"Relatorio_Produtividade_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+        string filePath = Path.Combine(FileSystem.CacheDirectory, fileName);
+
+        var linhasCsv = new List<string>
+        {
+            "ID Pedido;Cliente;Status;Sep User;Conf User;Exp User;Hora Inicio Separacao;Hora Fim Separacao;Hora Inicio Conferencia;Hora Fim Conferencia;Data Expedicao;Erros Evitados;Tempo Medio (min)"
+        };
+
+        foreach (var p in _pedidosMock)
+        {
+            if (!string.IsNullOrEmpty(operadorFiltro) && operadorFiltro != "Todos")
+            {
+                if (p.SepUser != operadorFiltro && p.ConfUser != operadorFiltro && p.ExpUser != operadorFiltro)
+                    continue;
+            }
+
+            string sepInicio = p.SepInicioData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+            string sepFim = p.SepFimData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+            string confInicio = p.ConfInicioData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+            string confFim = p.ConfFimData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+            string expFim = p.ExpFimData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
+
+            linhasCsv.Add($"{p.IdPedido};{p.Cliente};{p.Status};{p.SepUser ?? "-"};{p.ConfUser ?? "-"};{p.ExpUser ?? "-"};{sepInicio};{sepFim};{confInicio};{confFim};{expFim};{p.ErrosEvitados};10,00");
+        }
+
+        await File.WriteAllLinesAsync(filePath, linhasCsv, System.Text.Encoding.UTF8);
+        return filePath;
     }
 
     public async Task<(bool Sucesso, string Mensagem)> ReverterEtapaAsync(int id)
     {
         await Task.Delay(300);
-        var mock = _pedidosMock.FirstOrDefault(p => p.Id == id);
+        var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
         if (mock == null) return (false, "Pedido não encontrado.");
 
         if (mock.Status == "Em Separaçao")
+        {
             mock.Status = "Aguardando";
+            mock.SepInicioData = null;
+        }
         else if (mock.Status == "Em Conferencia")
+        {
             mock.Status = "Aguardando Conferencia";
+            mock.ConfInicioData = null;
+        }
 
         return (true, "Sucesso");
     }
 }
-
 

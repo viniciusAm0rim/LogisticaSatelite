@@ -6,15 +6,15 @@ namespace SpringApp.Views;
 
 public partial class MainPage : ContentPage
 {
-    private readonly MockPedidoService _pedidoService; //MOCKPEDIDOSERVICE É APENAS PARA TESTE 
+    private readonly IPedidoService _pedidoService;
     private string _statusAtualFiltro = "Aguardando";
     private readonly int _perfilLogado;
-    private List<Pedido> _pedidosAnteriores = new(); // Lista auxiliar para a aba retrátil
+    private List<Pedido> _pedidosAnteriores = new();
 
-    public MainPage()
+    public MainPage(IPedidoService pedidoService)
     {
         InitializeComponent();
-        _pedidoService = new MockPedidoService();
+        _pedidoService = pedidoService;
 
         string matriculaSalva = Preferences.Get("MatriculaLogada", "3");
 
@@ -71,7 +71,23 @@ public partial class MainPage : ContentPage
             _ => "Usuário Padrão"
         };
 
-        string acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", "Sair da Conta");
+        string acao;
+        string matriculaSalva = Preferences.Get("MatriculaLogada", "");
+        if (_perfilLogado == 4 || matriculaSalva == "4" || matriculaSalva.Contains("supervisor"))
+        {
+            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", null, "Relatórios de Produtividade", "Sair da Conta");
+
+            if (acao == "Relatórios de Produtividade")
+            {
+                var paginaSuper = Handler.MauiContext.Services.GetService<GestaoSupervisorPage>();
+                await Navigation.PushAsync(paginaSuper);
+                return;
+            }
+        }
+        else
+        {
+            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", "Sair da Conta");
+        }
 
         if (acao == "Sair da Conta")
         {
@@ -90,22 +106,20 @@ public partial class MainPage : ContentPage
 
     private async Task CarregarPedidosAsync()
     {
-        // 1. Carrega os pedidos da fila ativa principal
         var pedidosAtivos = await _pedidoService.ObterPorStatusAsync(_statusAtualFiltro);
         PedidosCollectionView.ItemsSource = pedidosAtivos;
 
-        // 2. Carrega e filtra o histórico dinâmico de acordo com a Aba atual
         var todosPedidos = await _pedidoService.GetPedidosAsync();
 
-        if (_statusAtualFiltro == "Aguardando") // Aba Separação
+        if (_statusAtualFiltro == "Aguardando")
         {
             _pedidosAnteriores = todosPedidos.Where(p => p.Status != "Aguardando" && p.Status != "Em Separaçao").ToList();
         }
-        else if (_statusAtualFiltro == "Aguardando Conferencia") // Aba Conferência
+        else if (_statusAtualFiltro == "Aguardando Conferencia")
         {
             _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Aguardando Expediçao" || p.Status == "Expedido" || p.Status == "Finalizado").ToList();
         }
-        else if (_statusAtualFiltro == "Aguardando Expediçao") // Aba Expedição
+        else if (_statusAtualFiltro == "Aguardando Expediçao")
         {
             _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Expedido" || p.Status == "Finalizado").ToList();
         }
@@ -113,14 +127,12 @@ public partial class MainPage : ContentPage
         BindableLayout.SetItemsSource(ListaPedidosAnteriores, _pedidosAnteriores);
     }
 
-    // Controle de Clique na Aba Retrátil (Histórico)
     private void OnTogglePedidosAnterioresTapped(object sender, TappedEventArgs e)
     {
         ListaPedidosAnteriores.IsVisible = !ListaPedidosAnteriores.IsVisible;
         SetaPedidosAnteriores.Text = ListaPedidosAnteriores.IsVisible ? "▲" : "▼";
     }
 
-    // Controle de expansão de cada item do histórico
     private void OnPedidoAnteriorItemTapped(object sender, TappedEventArgs e)
     {
         if (sender is Border border && border.BindingContext is Pedido pedidoTapped)
@@ -175,11 +187,11 @@ public partial class MainPage : ContentPage
             {
                 if (pedidoSelecionado.Status.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
                 {
-                    var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(pedidoSelecionado.Id, pedidoSelecionado.Status);
+                    var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(pedidoSelecionado.IdPedido, pedidoSelecionado.Status);
                     if (sucesso)
                     {
                         pedidoSelecionado.Status = "Em Separaçao";
-                        await Navigation.PushAsync(new SeparacaoItensPage(pedidoSelecionado));
+                        await Navigation.PushAsync(new SeparacaoItensPage(pedidoSelecionado, _pedidoService));
                     }
                     else
                     {
@@ -188,11 +200,11 @@ public partial class MainPage : ContentPage
                 }
                 else if (pedidoSelecionado.Status.Equals("Aguardando Conferencia", StringComparison.OrdinalIgnoreCase))
                 {
-                    var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(pedidoSelecionado.Id, pedidoSelecionado.Status);
+                    var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(pedidoSelecionado.IdPedido, pedidoSelecionado.Status);
                     if (sucesso)
                     {
                         pedidoSelecionado.Status = "Em Conferencia";
-                        await Navigation.PushAsync(new ConferenciaItensPage(pedidoSelecionado));
+                        await Navigation.PushAsync(new ConferenciaItensPage(pedidoSelecionado, _pedidoService));
                     }
                     else
                     {
@@ -201,7 +213,7 @@ public partial class MainPage : ContentPage
                 }
                 else if (pedidoSelecionado.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase))
                 {
-                    await Navigation.PushAsync(new ExpedicaoItensPage(pedidoSelecionado));
+                    await Navigation.PushAsync(new ExpedicaoItensPage(pedidoSelecionado, _pedidoService));
                 }
             });
         }

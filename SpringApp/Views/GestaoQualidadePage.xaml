@@ -1,0 +1,9 @@
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SpringApp.Views.GestaoQualidadePage"
+             Title="Gestão de Qualidade">
+
+    <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center">
+        <Label Text="Módulo em Construção" FontSize="24" FontAttributes="Bold" HorizontalOptions="Center" />
+    </VerticalStackLayout>
+</ContentPage>

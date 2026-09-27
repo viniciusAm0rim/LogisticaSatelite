@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace SpringApp.Services;
 
-public class ApiServices
+public class ApiServices : IPedidoService
 {
     private readonly HttpClient _httpClient;
     private readonly JsonSerializerOptions _jsonOptions;
@@ -18,7 +18,7 @@ public class ApiServices
         };
     }
 
-    public async Task<List<Pedido>> ObterPedidosAsync()
+    public async Task<List<Pedido>> GetPedidosAsync()
     {
         try
         {
@@ -30,24 +30,63 @@ public class ApiServices
         }
     }
 
-    public async Task<(bool Sucesso, string MensagemErro)> AvancarEtapaAsync(int id, string statusAtual)
+    public async Task<List<Pedido>> ObterPorStatusAsync(string status)
+    {
+        try
+        {
+            var pedidos = await GetPedidosAsync();
+            return pedidos.Where(p => p.Status.Equals(status, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        catch (Exception)
+        {
+            return new();
+        }
+    }
+
+    public async Task<Pedido?> GetPedidoPorIdAsync(int id)
+    {
+        try
+        {
+            return await _httpClient.GetFromJsonAsync<Pedido>($"api/pedidos/{id}", _jsonOptions);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> BloquearPedidoAsync(int id, string usuario)
+    {
+        try
+        {
+            var dto = new { Usuario = usuario };
+            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/lock", dto, _jsonOptions);
+            return response.IsSuccessStatusCode ? (true, string.Empty) : (false, "Erro ao bloquear pedido.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> AvancarEtapaAsync(int id, string statusAtual, string usuario = null, int errosEvitados = 0)
     {
         string endpoint = statusAtual switch
         {
             "Aguardando" => $"api/pedidos/{id}/separar",
             "Em Separaçao" => $"api/pedidos/{id}/AguardandoConfe",
             "Aguardando Conferencia" => $"api/pedidos/{id}/EmConferencia",
-            "Em Conferencia" => $"api/pedidos/{id}/AguardandoExped",
             "Aguardando Expediçao" => $"api/pedidos/{id}/Expedido",
-            _ => string.Empty // variavel que 
+            _ => string.Empty
         };
 
         if (string.IsNullOrEmpty(endpoint))
         {
-            return (false, "Este pedido já está em um estado final.");
+            return (false, "Este pedido já está em um estado final ou endpoint inválido.");
         }
 
-        var response = await _httpClient.PatchAsync(endpoint, null);
+        var dto = new { Usuario = usuario, ErrosEvitados = errosEvitados };
+        var response = await _httpClient.PatchAsJsonAsync(endpoint, dto, _jsonOptions);
 
         if (response.IsSuccessStatusCode)
         {
@@ -61,6 +100,61 @@ public class ApiServices
         }
 
         return (false, "Ocorreu um erro inesperado ao processar a requisição.");
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, string usuario = null, int errosEvitados = 0)
+    {
+        try
+        {
+            string endpoint = $"api/pedidos/{id}/ConcluirConferencia";
+            var dto = new { Usuario = usuario, Volumes = volumes, ErrosEvitados = errosEvitados };
+
+            var response = await _httpClient.PatchAsJsonAsync(endpoint, dto, _jsonOptions);
+
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            return (false, "Erro ao concluir a conferência e gerar volumes.");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de conexão: {ex.Message}");
+        }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> ReverterEtapaAsync(int id)
+    {
+        try
+        {
+            var response = await _httpClient.PatchAsync($"api/pedidos/{id}/reverter", null);
+            return response.IsSuccessStatusCode ? (true, string.Empty) : (false, "Erro ao reverter etapa.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<string?> BaixarRelatorioProdutividadeAsync(string operadorFiltro)
+    {
+        try
+        {
+            string url = $"api/relatorio/exportar-csv?operador={Uri.EscapeDataString(operadorFiltro)}";
+            var response = await _httpClient.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                string caminhoFicheiro = Path.Combine(FileSystem.CacheDirectory, "Relatorio_Produtividade.csv");
+                File.WriteAllBytes(caminhoFicheiro, bytes);
+                return caminhoFicheiro;
+            }
+            return null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 }
 

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SpringApp.Views.GestaoSupervisorPage"
+             Title="Painel de Produtividade"
+             BackgroundColor="#f1f5f9">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="20">
+
+            <!-- Cabeçalho Informativo -->
+            <VerticalStackLayout Spacing="5">
+                <Label Text="Relatórios e Indicadores" FontSize="22" FontAttributes="Bold" TextColor="#0f172a" />
+                <Label Text="Acompanhe o desempenho operacional, tempo médio e métricas de separação." FontSize="14" TextColor="#64748b" />
+            </VerticalStackLayout>
+
+            <!-- Painel de Filtros e Exportação -->
+            <Border BackgroundColor="White" Stroke="#cbd5e1" StrokeThickness="1" StrokeShape="RoundRectangle 12" Padding="15">
+                <VerticalStackLayout Spacing="15">
+                    <Label Text="Filtrar por Operador" FontSize="16" FontAttributes="Bold" TextColor="#1e293b" />
+
+                    <!-- Picker de Seleção de Funcionários -->
+                    <Picker x:Name="FuncionarioPicker" Title="Selecione o Operador" TextColor="#0f172a">
+                        <Picker.ItemsSource>
+                            <x:Array Type="{x:Type x:String}">
+                                <x:String>Todos</x:String>
+                                <x:String>Vinicius Amorim</x:String>
+                                <x:String>Operador Teste</x:String>
+                            </x:Array>
+                        </Picker.ItemsSource>
+                        <Picker.SelectedIndex>0</Picker.SelectedIndex>
+                    </Picker>
+
+                    <!-- Botão de Exportar Relatório -->
+                    <Button x:Name="BtnExportarRelatorio" 
+                            Text="Gerar e Baixar Planilha (CSV)" 
+                            BackgroundColor="#0f172a" 
+                            TextColor="White"
+                            FontAttributes="Bold"
+                            HeightRequest="50"
+                            CornerRadius="8"
+                            Clicked="OnExportarRelatorioClicked" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Card de Dicas / Resumo Rápido -->
+            <Border BackgroundColor="#dbeafe" Stroke="#bfdbfe" StrokeShape="RoundRectangle 12" Padding="15">
+                <VerticalStackLayout Spacing="5">
+                    <Label Text="Informação Útil para a Apresentação" FontAttributes="Bold" TextColor="#1e40af" />
+                    <Label Text="Ao clicar no botão acima, a aplicação gera o relatório consolidado com o tempo médio de separação e erros evitados, abrindo o menu de partilha nativo do dispositivo." FontSize="13" TextColor="#1e3a8a" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

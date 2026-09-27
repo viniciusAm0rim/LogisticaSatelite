@@ -16,7 +16,6 @@ namespace LogisticaSatelite.Api.Controllers
             _context = context;
         }
 
-        // Adicione este método dentro de PedidosController
         [HttpPatch("{id}/lock")]
         public async Task<ActionResult<Pedido>> LockPedido(int id, [FromBody] EtapaRequestDTO dto)
         {
@@ -32,13 +31,13 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
-
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Pedido>>> GetPedidos()
         {
             var listapedidos = await _context.Pedidos
                 .Include(p => p.Itens)
                     .ThenInclude(i => i.Produto)
+                .Include(p => p.VolumesPedidos)
                 .ToListAsync();
 
             return Ok(listapedidos);
@@ -50,6 +49,7 @@ namespace LogisticaSatelite.Api.Controllers
             var pedido = await _context.Pedidos
                 .Include(p => p.Itens)
                     .ThenInclude(i => i.Produto)
+                .Include(p => p.VolumesPedidos)
                 .FirstOrDefaultAsync(p => p.Id == Id);
 
             if (pedido == null) return NotFound();
@@ -90,7 +90,8 @@ namespace LogisticaSatelite.Api.Controllers
                     Modal = modalFinal,
                     Status = "Aguardando",
                     Volumes = 0,
-                    Peso = 0.0
+                    Peso = 0.0,
+                    ErrosEvitados = 0
                 };
 
                 foreach (var itemInput in dto.Itens)
@@ -120,7 +121,10 @@ namespace LogisticaSatelite.Api.Controllers
                 _context.Pedidos.Add(novoPedido);
                 await _context.SaveChangesAsync();
 
-                var pedidoCriado = await _context.Pedidos.Include(p => p.Itens).ThenInclude(i => i.Produto).FirstOrDefaultAsync(p => p.Id == novoPedido.Id);
+                var pedidoCriado = await _context.Pedidos
+                    .Include(p => p.Itens).ThenInclude(i => i.Produto)
+                    .Include(p => p.VolumesPedidos)
+                    .FirstOrDefaultAsync(p => p.Id == novoPedido.Id);
                 return Ok(pedidoCriado);
             }
             catch (Exception ex)
@@ -139,8 +143,7 @@ namespace LogisticaSatelite.Api.Controllers
                 throw new ExceptionTemplate("O pedido não está disponível para separação.");
 
             pedido.Status = "Em Separaçao";
-
-            // Grava quem INICIOU a separação no LockedBy
+            pedido.SepInicioData = DateTime.Now;
             if (!string.IsNullOrEmpty(dto.Usuario)) pedido.LockedBy = dto.Usuario;
 
             await _context.SaveChangesAsync();
@@ -157,10 +160,12 @@ namespace LogisticaSatelite.Api.Controllers
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
             pedido.Status = "Aguardando Conferencia";
-
             pedido.SepUser = dto.Usuario;
-            pedido.SepData = DateTime.Now;
-            pedido.LockedBy = null; // Libera o lock
+            pedido.SepFimData = DateTime.Now;
+
+            // Soma/acumula os erros reportados na separação
+            pedido.ErrosEvitados += dto.ErrosEvitados;
+            pedido.LockedBy = null;
 
             await _context.SaveChangesAsync();
             return Ok(pedido);
@@ -176,7 +181,7 @@ namespace LogisticaSatelite.Api.Controllers
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
             pedido.Status = "Em Conferencia";
-
+            pedido.ConfInicioData = DateTime.Now;
             if (!string.IsNullOrEmpty(dto.Usuario)) pedido.LockedBy = dto.Usuario;
 
             await _context.SaveChangesAsync();
@@ -186,7 +191,11 @@ namespace LogisticaSatelite.Api.Controllers
         [HttpPatch("{id}/ConcluirConferencia")]
         public async Task<ActionResult<Pedido>> ConcluirConferencia(int id, [FromBody] EtapaRequestDTO dto)
         {
-            var pedido = await _context.Pedidos.FindAsync(id);
+            var pedido = await _context.Pedidos
+                .Include(p => p.Itens)
+                .Include(p => p.VolumesPedidos)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
             if (pedido == null) return NotFound();
 
             if (pedido.Status != "Em Conferencia")
@@ -194,24 +203,42 @@ namespace LogisticaSatelite.Api.Controllers
 
             pedido.Status = "Aguardando Expediçao";
             pedido.Volumes = dto.Volumes;
-
             pedido.ConfUser = dto.Usuario;
-            pedido.ConfData = DateTime.Now;
+            pedido.ConfFimData = DateTime.Now;
+
+            // Soma/acumula os erros reportados na conferência
+            pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
 
-            await _context.SaveChangesAsync();
-            return Ok(pedido);
-        }
+            _context.VolumesPedidos.RemoveRange(pedido.VolumesPedidos);
+            pedido.VolumesPedidos.Clear();
 
-        [HttpPatch("{id}/AguardandoExped")]
-        public async Task<ActionResult<Pedido>> AguardandoExped(int id, [FromBody] EtapaRequestDTO dto)
-        {
-            var pedido = await _context.Pedidos.FindAsync(id);
-            if (pedido == null) return NotFound();
+            int clienteId = 1;
+            if (!string.IsNullOrEmpty(pedido.Destinatario))
+            {
+                var clienteDb = await _context.Clientes.FirstOrDefaultAsync(c => c.Nome == pedido.Destinatario);
+                if (clienteDb != null) clienteId = clienteDb.Id;
+            }
 
-            pedido.Status = "Aguardando Expediçao";
+            for (int i = 1; i <= dto.Volumes; i++)
+            {
+                string codigoGerado = $"c{clienteId}p{pedido.Id}v{i}";
+                pedido.VolumesPedidos.Add(new VolumePedido
+                {
+                    PedidoId = pedido.Id,
+                    CodigoVolume = codigoGerado,
+                    BipadoExpedicao = false
+                });
+            }
+
             await _context.SaveChangesAsync();
-            return Ok(pedido);
+
+            var pedidoAtualizado = await _context.Pedidos
+                .Include(p => p.Itens).ThenInclude(i => i.Produto)
+                .Include(p => p.VolumesPedidos)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            return Ok(pedidoAtualizado);
         }
 
         [HttpPatch("{id}/Expedido")]
@@ -224,9 +251,11 @@ namespace LogisticaSatelite.Api.Controllers
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
             pedido.Status = "Expedido";
-
             pedido.ExpUser = dto.Usuario;
-            pedido.ExpData = DateTime.Now;
+            pedido.ExpFimData = DateTime.Now;
+
+            // Soma/acumula os erros reportados na expedição
+            pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
 
             await _context.SaveChangesAsync();
@@ -242,11 +271,13 @@ namespace LogisticaSatelite.Api.Controllers
             if (pedido.Status == "Em Separaçao")
             {
                 pedido.Status = "Aguardando";
+                pedido.SepInicioData = null;
                 pedido.LockedBy = null;
             }
             else if (pedido.Status == "Em Conferencia")
             {
                 pedido.Status = "Aguardando Conferencia";
+                pedido.ConfInicioData = null;
                 pedido.LockedBy = null;
             }
 
@@ -259,6 +290,7 @@ namespace LogisticaSatelite.Api.Controllers
     {
         public string? Usuario { get; set; }
         public int Volumes { get; set; }
+        public int ErrosEvitados { get; set; }
     }
 
     public class CriarPedidoSimplificadoDTO

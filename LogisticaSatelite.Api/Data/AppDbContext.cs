@@ -13,5 +13,7 @@ namespace LogisticaSatelite.Api.Data
         public DbSet<Produto> Produtos { get; set; } = null!; // <--- Adicionado aqui
         public DbSet<Cliente> Clientes { get; set; } = null!; // <-- Adicionar
         public DbSet<Transportadora> Transportadoras { get; set; } = null!; // <-- Adicionar
+        public DbSet<VolumePedido> VolumesPedidos { get; set; }
+        public DbSet<LogOperacional> LogsOperacionais { get; set; } = null!;
     }
 }

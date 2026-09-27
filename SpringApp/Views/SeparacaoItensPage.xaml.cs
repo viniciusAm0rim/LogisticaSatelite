@@ -1,4 +1,3 @@
-using Microsoft.Maui.Controls;
 using SpringApp.Models;
 using SpringApp.Services;
 
@@ -7,23 +6,26 @@ namespace SpringApp.Views;
 public partial class SeparacaoItensPage : ContentPage
 {
     private Pedido _pedido;
-    private readonly MockPedidoService _pedidoService;
+    private readonly IPedidoService _pedidoService;
     private bool _isFinalizando = false;
     private readonly int _pedidoId;
+    private int _errosEvitados = 0; // <-- Variável para acumular os erros da separação
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
-    public SeparacaoItensPage(Pedido pedido)
+    public SeparacaoItensPage(Pedido pedido, IPedidoService pedidoService)
     {
         InitializeComponent();
+        _pedidoService = pedidoService;
         _pedido = pedido;
-        _pedidoId = pedido.Id;
-        _pedidoService = new MockPedidoService();
+        _pedidoId = pedido?.IdPedido ?? 0;
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        await _pedidoService.BloquearPedidoAsync(_pedidoId, _usuarioLogado); // LOCK ENTRADA
+        if (_pedidoId == 0) return;
+
+        await _pedidoService.BloquearPedidoAsync(_pedidoId, _usuarioLogado);
         await CarregarPedidoDaApiAsync();
         Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
     }
@@ -39,8 +41,8 @@ public partial class SeparacaoItensPage : ContentPage
         }
         catch { }
 
-        NumeroPedidoLabel.Text = $"#{_pedido.Id:D4}";
-        ClienteLabel.Text = (_pedido.Destinatario ?? "").ToUpper();
+        NumeroPedidoLabel.Text = $"#{_pedido.IdPedido:D4}";
+        ClienteLabel.Text = (_pedido.Cliente ?? "").ToUpper();
         ModalLabel.Text = string.IsNullOrEmpty(_pedido.Modal) ? "PADRÃO" : _pedido.Modal.ToUpper();
         AtualizarContadores();
     }
@@ -52,8 +54,16 @@ public partial class SeparacaoItensPage : ContentPage
             string codigo = entry.Text.Trim();
             entry.Text = string.Empty;
             var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo, StringComparison.OrdinalIgnoreCase));
-            if (item != null) ProcessarBipagemItem(item);
-            else DisplayAlert("Atenção", "Código inválido.", "OK");
+
+            if (item != null)
+            {
+                ProcessarBipagemItem(item);
+            }
+            else
+            {
+                _errosEvitados++; // <-- Contabiliza erro de leitura incorreta na separação
+                DisplayAlert("Atenção", "Código inválido.", "OK");
+            }
             Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
         }
     }
@@ -64,8 +74,15 @@ public partial class SeparacaoItensPage : ContentPage
         if (!string.IsNullOrWhiteSpace(codigo))
         {
             var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (item != null) ProcessarBipagemItem(item);
-            else await DisplayAlert("Erro", "Produto não encontrado.", "OK");
+            if (item != null)
+            {
+                ProcessarBipagemItem(item);
+            }
+            else
+            {
+                _errosEvitados++; // <-- Contabiliza erro manual incorreto
+                await DisplayAlert("Erro", "Produto não encontrado.", "OK");
+            }
         }
         Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
     }
@@ -98,7 +115,7 @@ public partial class SeparacaoItensPage : ContentPage
         bool confirm = await DisplayAlert("Atenção", "Deseja cancelar?", "Sim", "Não");
         if (confirm)
         {
-            var (sucesso, msg) = await _pedidoService.ReverterEtapaAsync(_pedido.Id);
+            var (sucesso, msg) = await _pedidoService.ReverterEtapaAsync(_pedido.IdPedido);
             if (sucesso) await Navigation.PopAsync();
         }
     }
@@ -108,7 +125,8 @@ public partial class SeparacaoItensPage : ContentPage
         if (_isFinalizando) return;
         _isFinalizando = true;
 
-        var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(_pedido.Id, _pedido.Status, _usuarioLogado);
+        // Envia os erros evitados acumulados durante a separação para a API
+        var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(_pedido.IdPedido, _pedido.Status, _usuarioLogado, _errosEvitados);
         if (sucesso)
         {
             await DisplayAlert("Sucesso", "Separação concluída!", "OK");
