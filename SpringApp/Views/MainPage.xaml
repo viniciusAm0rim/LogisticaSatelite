@@ -7,7 +7,8 @@
              Shell.TabBarIsVisible="False"
              BackgroundColor="#ffffff">
 
-    <Grid RowDefinitions="Auto, Auto, Auto, *" Padding="16,20,16,10" RowSpacing="15">
+    <!-- Adicionado um 'Auto' extra no RowDefinitions para a barra de pesquisa -->
+    <Grid RowDefinitions="Auto, Auto, Auto, Auto, *" Padding="16,20,16,10" RowSpacing="15">
 
         <!-- 1. HEADER -->
         <Grid Grid.Row="0" ColumnDefinitions=" *, Auto" VerticalOptions="Center">
@@ -15,28 +16,32 @@
             <Button Grid.Column="1" Text="⚙" FontSize="18" Clicked="OnPerfilClicked" BackgroundColor="#f1f5f9" TextColor="#334155" WidthRequest="46" HeightRequest="46" CornerRadius="23" Padding="0"/>
         </Grid>
 
-        <!-- 2. NAVEGAÇÃO EM LINHA (3 Colunas Alinhadas) -->
+        <!-- 2. NAVEGAÇÃO EM LINHA -->
         <Grid Grid.Row="1" x:Name="AbasGrid" ColumnSpacing="0" ColumnDefinitions="*,*,*">
             <BoxView Grid.ColumnSpan="3" HeightRequest="1" Color="#e2e8f0" VerticalOptions="End"/>
-
             <Grid Grid.Column="0" RowDefinitions="*, Auto">
                 <Button x:Name="AbaSeparacaoBtn" Grid.Row="0" Text="Separar" Clicked="OnAbaClicked" CommandParameter="Aguardando" BackgroundColor="Transparent" TextColor="#2563eb" FontAttributes="Bold" FontSize="14" Padding="0"/>
                 <BoxView x:Name="LinhaSeparacao" Grid.Row="1" HeightRequest="1" Color="#2563eb" VerticalOptions="End"/>
             </Grid>
-
             <Grid Grid.Column="1" RowDefinitions="*, Auto">
                 <Button x:Name="AbaConferenciaBtn" Grid.Row="0" Text="Conferir" Clicked="OnAbaClicked" CommandParameter="Aguardando Conferencia" BackgroundColor="Transparent" TextColor="#64748b" FontAttributes="Bold" FontSize="14" Padding="0"/>
                 <BoxView x:Name="LinhaConferencia" Grid.Row="1" HeightRequest="1" Color="Transparent" VerticalOptions="End"/>
             </Grid>
-
             <Grid Grid.Column="2" RowDefinitions="*, Auto">
                 <Button x:Name="AbaExpedicaoBtn" Grid.Row="0" Text="Expedir" Clicked="OnAbaClicked" CommandParameter="Aguardando Expediçao" BackgroundColor="Transparent" TextColor="#64748b" FontAttributes="Bold" FontSize="14" Padding="0"/>
                 <BoxView x:Name="LinhaExpedicao" Grid.Row="1" HeightRequest="1" Color="Transparent" VerticalOptions="End"/>
             </Grid>
         </Grid>
 
-        <!-- 3. ABA RETRÁTIL DE PEDIDOS FINALIZADOS (HISTÓRICO DA ETAPA) -->
-        <Border Grid.Row="2" Stroke="#cbd5e1" StrokeThickness="1" BackgroundColor="#f8fafc" Padding="16">
+        <!-- 3. BARRA DE PESQUISA (Apenas visível na Expedição) -->
+        <SearchBar x:Name="PesquisaExpedicaoBar" Grid.Row="2" IsVisible="False"
+                   Placeholder="Pesquisar Cliente ou Nº Pedido..." 
+                   SearchButtonPressed="OnPesquisaExpedicaoPesquisar" 
+                   TextChanged="OnPesquisaExpedicaoTextChanged"
+                   BackgroundColor="#f8fafc" CancelButtonColor="#ef4444" />
+
+        <!-- 4. ABA RETRÁTIL DE PEDIDOS FINALIZADOS -->
+        <Border Grid.Row="3" Stroke="#cbd5e1" StrokeThickness="1" BackgroundColor="#f8fafc" Padding="16">
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="12"/>
             </Border.StrokeShape>
@@ -86,8 +91,8 @@
             </VerticalStackLayout>
         </Border>
 
-        <!-- 4. LISTA DE CARDS DE PEDIDOS ATUAIS -->
-        <CollectionView Grid.Row="3" x:Name="PedidosCollectionView" SelectionMode="None">
+        <!-- 5. LISTA DE CARDS DE PEDIDOS ATUAIS -->
+        <CollectionView Grid.Row="4" x:Name="PedidosCollectionView" SelectionMode="None">
             <CollectionView.EmptyView>
                 <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="10" Padding="20">
                     <Label Text="📦" FontSize="40" HorizontalOptions="Center"/>

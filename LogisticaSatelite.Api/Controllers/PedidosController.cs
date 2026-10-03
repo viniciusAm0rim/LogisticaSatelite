@@ -265,7 +265,12 @@ namespace LogisticaSatelite.Api.Controllers
         [HttpPatch("{id}/reverter")]
         public async Task<ActionResult<Pedido>> ReverterEtapa(int id)
         {
-            var pedido = await _context.Pedidos.FindAsync(id);
+            // Precisamos do Include para limpar os itens ou volumes ao cancelar
+            var pedido = await _context.Pedidos
+                .Include(p => p.Itens)
+                .Include(p => p.VolumesPedidos)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
             if (pedido == null) return NotFound();
 
             if (pedido.Status == "Em Separaçao")
@@ -273,12 +278,35 @@ namespace LogisticaSatelite.Api.Controllers
                 pedido.Status = "Aguardando";
                 pedido.SepInicioData = null;
                 pedido.LockedBy = null;
+
+                // Zera o progresso da separação nos itens
+                foreach (var item in pedido.Itens)
+                {
+                    item.ScansSep = 0;
+                }
             }
             else if (pedido.Status == "Em Conferencia")
             {
                 pedido.Status = "Aguardando Conferencia";
                 pedido.ConfInicioData = null;
                 pedido.LockedBy = null;
+
+                // Zera o progresso da conferência nos itens
+                foreach (var item in pedido.Itens)
+                {
+                    item.ScansConf = 0;
+                }
+            }
+            else if (pedido.Status == "Em Expediçao") // Caso futuramente crie o status "Em Expedição" antes da baixa final
+            {
+                pedido.Status = "Aguardando Expediçao";
+                pedido.LockedBy = null;
+
+                // Zera o progresso da expedição nos volumes
+                foreach (var volume in pedido.VolumesPedidos)
+                {
+                    volume.BipadoExpedicao = false;
+                }
             }
 
             await _context.SaveChangesAsync();

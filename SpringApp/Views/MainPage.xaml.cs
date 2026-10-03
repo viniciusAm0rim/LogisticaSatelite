@@ -1,6 +1,5 @@
 ﻿using SpringApp.Models;
 using SpringApp.Services;
-using Microsoft.Maui.Storage;
 
 namespace SpringApp.Views;
 
@@ -11,17 +10,17 @@ public partial class MainPage : ContentPage
     private readonly int _perfilLogado;
     private List<Pedido> _pedidosAnteriores = new();
 
+    // Variável para armazenar a lista da aba atual na memória para filtragem rápida
+    private List<Pedido> _pedidosAtivos = new();
+
     public MainPage(IPedidoService pedidoService)
     {
         InitializeComponent();
         _pedidoService = pedidoService;
 
         string matriculaSalva = Preferences.Get("MatriculaLogada", "3");
-
         if (!int.TryParse(matriculaSalva, out _perfilLogado))
-        {
             _perfilLogado = 3;
-        }
 
         AplicarRegrasDeAcessoPorPerfil();
     }
@@ -76,7 +75,6 @@ public partial class MainPage : ContentPage
         if (_perfilLogado == 4 || matriculaSalva == "4" || matriculaSalva.Contains("supervisor"))
         {
             acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", null, "Relatórios de Produtividade", "Sair da Conta");
-
             if (acao == "Relatórios de Produtividade")
             {
                 var paginaSuper = Handler.MauiContext.Services.GetService<GestaoSupervisorPage>();
@@ -106,23 +104,20 @@ public partial class MainPage : ContentPage
 
     private async Task CarregarPedidosAsync()
     {
-        var pedidosAtivos = await _pedidoService.ObterPorStatusAsync(_statusAtualFiltro);
-        PedidosCollectionView.ItemsSource = pedidosAtivos;
+        // Limpa a barra de pesquisa ao recarregar as abas
+        PesquisaExpedicaoBar.Text = string.Empty;
+
+        _pedidosAtivos = await _pedidoService.ObterPorStatusAsync(_statusAtualFiltro);
+        PedidosCollectionView.ItemsSource = _pedidosAtivos;
 
         var todosPedidos = await _pedidoService.GetPedidosAsync();
 
         if (_statusAtualFiltro == "Aguardando")
-        {
             _pedidosAnteriores = todosPedidos.Where(p => p.Status != "Aguardando" && p.Status != "Em Separaçao").ToList();
-        }
         else if (_statusAtualFiltro == "Aguardando Conferencia")
-        {
             _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Aguardando Expediçao" || p.Status == "Expedido" || p.Status == "Finalizado").ToList();
-        }
         else if (_statusAtualFiltro == "Aguardando Expediçao")
-        {
             _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Expedido" || p.Status == "Finalizado").ToList();
-        }
 
         BindableLayout.SetItemsSource(ListaPedidosAnteriores, _pedidosAnteriores);
     }
@@ -150,8 +145,53 @@ public partial class MainPage : ContentPage
             _statusAtualFiltro = status;
             AtualizarVisualAbas(abaClicada);
 
+            // Exibe a barra de pesquisa apenas se estiver na aba de expedição
+            PesquisaExpedicaoBar.IsVisible = status == "Aguardando Expediçao";
+
             PedidosCollectionView.ItemsSource = null;
             await CarregarPedidosAsync();
+        }
+    }
+
+    // ===================================================================
+    // LÓGICA DE PESQUISA E EXPEDIÇÃO EM LOTE
+    // ===================================================================
+    private async void OnPesquisaExpedicaoPesquisar(object sender, EventArgs e)
+    {
+        string termo = PesquisaExpedicaoBar.Text?.Trim().ToLower() ?? "";
+        if (string.IsNullOrEmpty(termo))
+        {
+            PedidosCollectionView.ItemsSource = _pedidosAtivos;
+            return;
+        }
+
+        // Filtra por nome do cliente ou ID do pedido
+        var filtrados = _pedidosAtivos.Where(p =>
+            (p.Cliente != null && p.Cliente.ToLower().Contains(termo)) ||
+            p.IdPedido.ToString() == termo
+        ).ToList();
+
+        // Se encontrou mais de um pedido, pergunta se quer expedir tudo de uma vez
+        if (filtrados.Count > 1)
+        {
+            bool lote = await DisplayAlert("Expedição em Lote", $"Encontramos {filtrados.Count} pedidos aguardando expedição. Deseja selecionar TODOS para bipar os volumes juntos?", "Sim, Todos", "Não, apenas filtrar");
+            if (lote)
+            {
+                // Passa a LISTA de pedidos filtrados para a página de expedição
+                await Navigation.PushAsync(new ExpedicaoItensPage(filtrados, _pedidoService));
+                return;
+            }
+        }
+
+        PedidosCollectionView.ItemsSource = filtrados;
+    }
+
+    private void OnPesquisaExpedicaoTextChanged(object sender, TextChangedEventArgs e)
+    {
+        // Volta a lista completa instantaneamente se o utilizador apagar o texto
+        if (string.IsNullOrWhiteSpace(e.NewTextValue))
+        {
+            PedidosCollectionView.ItemsSource = _pedidosAtivos;
         }
     }
 
@@ -193,10 +233,7 @@ public partial class MainPage : ContentPage
                         pedidoSelecionado.Status = "Em Separaçao";
                         await Navigation.PushAsync(new SeparacaoItensPage(pedidoSelecionado, _pedidoService));
                     }
-                    else
-                    {
-                        await DisplayAlert("Erro", mensagem, "OK");
-                    }
+                    else await DisplayAlert("Erro", mensagem, "OK");
                 }
                 else if (pedidoSelecionado.Status.Equals("Aguardando Conferencia", StringComparison.OrdinalIgnoreCase))
                 {
@@ -206,13 +243,11 @@ public partial class MainPage : ContentPage
                         pedidoSelecionado.Status = "Em Conferencia";
                         await Navigation.PushAsync(new ConferenciaItensPage(pedidoSelecionado, _pedidoService));
                     }
-                    else
-                    {
-                        await DisplayAlert("Erro", mensagem, "OK");
-                    }
+                    else await DisplayAlert("Erro", mensagem, "OK");
                 }
                 else if (pedidoSelecionado.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase))
                 {
+                    // Usa o construtor normal para um único pedido (ele foi adaptado internamente para listar 1)
                     await Navigation.PushAsync(new ExpedicaoItensPage(pedidoSelecionado, _pedidoService));
                 }
             });

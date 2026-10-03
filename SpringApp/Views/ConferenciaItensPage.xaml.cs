@@ -101,16 +101,25 @@ public partial class ConferenciaItensPage : ContentPage
 
     private async Task IniciarEtapaVolumesAsync()
     {
-        string resposta = await DisplayPromptAsync("Produtos Conferidos!", "Quantos volumes (caixas) este pedido gerou?", "Confirmar", "Cancelar", keyboard: Keyboard.Numeric);
+        int volumes = 0;
+        bool volumeValido = false;
 
-        if (int.TryParse(resposta, out int volumes) && volumes > 0)
+        // O laço while trava a tela e reabre o popup até que um valor válido seja inserido
+        while (!volumeValido)
         {
-            await FinalizarConferenciaNoBancoAsync(volumes);
+            string resposta = await DisplayPromptAsync("Produtos Conferidos!", "Quantos volumes (caixas) este pedido gerou?", "Confirmar", "Cancelar", keyboard: Keyboard.Numeric);
+
+            if (int.TryParse(resposta, out volumes) && volumes > 0)
+            {
+                volumeValido = true; // Quebra o laço e prossegue
+            }
+            else
+            {
+                await DisplayAlert("Atenção", "É obrigatório informar um número válido de volumes para prosseguir.", "OK");
+            }
         }
-        else
-        {
-            await DisplayAlert("Atenção", "Informe um número válido de volumes para prosseguir.", "OK");
-        }
+
+        await FinalizarConferenciaNoBancoAsync(volumes);
     }
 
     private async Task FinalizarConferenciaNoBancoAsync(int qtdVolumes)

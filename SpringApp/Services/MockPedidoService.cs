@@ -6,24 +6,24 @@ public class MockPedidoService : IPedidoService
 {
     private static List<Pedido> _pedidosMock = new List<Pedido>
     {
-        // Pedido 1 (Loja)
+        // Pedido 1 
         new Pedido
         {
             IdPedido = 1,
-            Cliente = "Vinicius Ferreira Amorim",
-            Modal = "Loja",
+            Cliente = "Vinicius Amorim",
+            Modal = "Transportadora",
             NomeTransportadora = "Logística Rápida Expresso",
             CodTransportadora = "CTR-99",
             Status = "Aguardando",
             Volumes = 0,
             Itens = new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 1, CodItem = "SKU-001", LocalPicking = "R1-A-01", Quantidade = 2 },
-                new ItemPedido { ProdutoId = 2, CodItem = "SKU-002", LocalPicking = "R2-A-02", Quantidade = 1 }
+                new ItemPedido { ProdutoId = 1, CodItem = "001", LocalPicking = "R1-A-01", Quantidade = 2 },
+                new ItemPedido { ProdutoId = 2, CodItem = "002", LocalPicking = "R2-A-05", Quantidade = 1 }
             }
         },
 
-        // Pedido 2 (Retira)
+        // Pedido 2 (Outro Cliente)
         new Pedido
         {
             IdPedido = 2,
@@ -35,7 +35,23 @@ public class MockPedidoService : IPedidoService
             Volumes = 0,
             Itens = new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 3, CodItem = "SKU-003", LocalPicking = "R3-C-10", Quantidade = 5 }
+                new ItemPedido { ProdutoId = 3, CodItem = "003", LocalPicking = "R3-C-10", Quantidade = 2 }
+            }
+        },
+
+        // Pedido 3 (Mesmo cliente do Pedido 1 para testar o LOTE)
+        new Pedido
+        {
+            IdPedido = 3,
+            Cliente = "Vinicius Amorim", // <-- Mesmo nome para acionar a pesquisa em lote
+            Modal = "Transportadora",
+            NomeTransportadora = "Logística Rápida Expresso",
+            CodTransportadora = "CTR-99",
+            Status = "Aguardando",
+            Volumes = 0,
+            Itens = new List<ItemPedido>
+            {
+                new ItemPedido { ProdutoId = 2, CodItem = "002", LocalPicking = "R2-A-05", Quantidade = 2 }
             }
         }
     };
@@ -100,7 +116,6 @@ public class MockPedidoService : IPedidoService
         return (true, "Sucesso");
     }
 
-    // GERAÇÃO AUTOMÁTICA DOS CÓDIGOS DE VOLUME NO MOCK (Ex: c1p1v1)
     public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, string usuario = null, int errosEvitados = 0)
     {
         await Task.Delay(500);
@@ -113,9 +128,8 @@ public class MockPedidoService : IPedidoService
         mock.ConfFimData = DateTime.Now;
         mock.ErrosEvitados += errosEvitados;
 
-        // Limpa volumes anteriores e gera os novos automaticamente no formato c{ClienteId}p{PedidoId}v{i}
         mock.VolumesPedidos.Clear();
-        int clienteId = 1; // ID simulado para o cliente no mock
+        int clienteId = mock.Cliente == "Vinicius Amorim" ? 1 : 2;
 
         for (int i = 1; i <= volumes; i++)
         {
@@ -172,11 +186,39 @@ public class MockPedidoService : IPedidoService
         {
             mock.Status = "Aguardando";
             mock.SepInicioData = null;
+
+            if (mock.Itens != null)
+            {
+                foreach (var item in mock.Itens)
+                {
+                    item.BipagensSeparacao = 0;
+                }
+            }
         }
         else if (mock.Status == "Em Conferencia")
         {
             mock.Status = "Aguardando Conferencia";
             mock.ConfInicioData = null;
+
+            if (mock.Itens != null)
+            {
+                foreach (var item in mock.Itens)
+                {
+                    item.BipagensConferencia = 0;
+                }
+            }
+        }
+        else if (mock.Status == "Em Expediçao")
+        {
+            mock.Status = "Aguardando Expediçao";
+
+            if (mock.VolumesPedidos != null)
+            {
+                foreach (var volume in mock.VolumesPedidos)
+                {
+                    volume.BipadoExpedicao = false;
+                }
+            }
         }
 
         return (true, "Sucesso");

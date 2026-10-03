@@ -15,18 +15,24 @@ public class VolumeExpedicao
 
 public partial class ExpedicaoItensPage : ContentPage
 {
-    private readonly Pedido _pedido;
+    // Agora gerimos uma LISTA de pedidos (que pode conter 1 ou vários em caso de lote)
+    private readonly List<Pedido> _pedidosLote;
     private readonly IPedidoService _pedidoService;
     private bool _isFinalizando = false;
-    private int _errosEvitados = 0; // <-- Variável para acumular os erros da expedição
+    private int _errosEvitados = 0;
     private List<VolumeExpedicao> _listaVolumes;
 
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
+    // Construtor original (quando clica em apenas 1 pedido na lista)
     public ExpedicaoItensPage(Pedido pedido, IPedidoService pedidoService)
+        : this(new List<Pedido> { pedido }, pedidoService) { }
+
+    // Novo construtor (quando escolhe expedir em lote via barra de pesquisa)
+    public ExpedicaoItensPage(List<Pedido> pedidosLote, IPedidoService pedidoService)
     {
         InitializeComponent();
-        _pedido = pedido;
+        _pedidosLote = pedidosLote;
         _pedidoService = pedidoService;
         _listaVolumes = new List<VolumeExpedicao>();
 
@@ -37,7 +43,11 @@ public partial class ExpedicaoItensPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        await _pedidoService.BloquearPedidoAsync(_pedido.IdPedido, _usuarioLogado);
+        // Bloqueia todos os pedidos do lote no banco
+        foreach (var p in _pedidosLote)
+        {
+            await _pedidoService.BloquearPedidoAsync(p.IdPedido, _usuarioLogado);
+        }
         Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
     }
 
@@ -45,28 +55,41 @@ public partial class ExpedicaoItensPage : ContentPage
 
     private void CarregarDados()
     {
-        NumeroPedidoLabel.Text = $"#{_pedido.IdPedido:D4}";
-        ClienteLabel.Text = (_pedido.Cliente ?? "").ToUpper();
-        ModalLabel.Text = string.IsNullOrEmpty(_pedido.Modal) ? "PADRÃO" : _pedido.Modal.ToUpper();
+        if (_pedidosLote.Count == 1)
+        {
+            NumeroPedidoLabel.Text = $"#{_pedidosLote[0].IdPedido:D4}";
+            ClienteLabel.Text = (_pedidosLote[0].Cliente ?? "").ToUpper();
+            ModalLabel.Text = string.IsNullOrEmpty(_pedidosLote[0].Modal) ? "PADRÃO" : _pedidosLote[0].Modal.ToUpper();
+        }
+        else
+        {
+            NumeroPedidoLabel.Text = $"LOTE: {_pedidosLote.Count} PEDIDOS";
+            // Pressupõe que a filtragem do lote foi por cliente
+            ClienteLabel.Text = (_pedidosLote[0].Cliente ?? "").ToUpper();
+            ModalLabel.Text = "VÁRIOS MODAIS";
+        }
     }
 
     private async Task GerarVolumesDoBancoAsync()
     {
         _listaVolumes.Clear();
-        var pedidoAtualizado = await _pedidoService.GetPedidoPorIdAsync(_pedido.IdPedido);
 
-        if (pedidoAtualizado?.VolumesPedidos != null && pedidoAtualizado.VolumesPedidos.Any())
+        // Puxa e aglomera os volumes de TODOS os pedidos do lote
+        foreach (var p in _pedidosLote)
         {
-            int i = 1;
-            foreach (var vol in pedidoAtualizado.VolumesPedidos)
+            var pedidoAtualizado = await _pedidoService.GetPedidoPorIdAsync(p.IdPedido);
+
+            if (pedidoAtualizado?.VolumesPedidos != null && pedidoAtualizado.VolumesPedidos.Any())
             {
-                _listaVolumes.Add(new VolumeExpedicao
+                foreach (var vol in pedidoAtualizado.VolumesPedidos)
                 {
-                    CodigoEsperado = vol.CodigoVolume,
-                    ExibicaoNome = $"Volume: {vol.CodigoVolume}",
-                    Bipado = vol.BipadoExpedicao
-                });
-                i++;
+                    _listaVolumes.Add(new VolumeExpedicao
+                    {
+                        CodigoEsperado = vol.CodigoVolume,
+                        ExibicaoNome = $"Pedido #{p.IdPedido} | Vol: {vol.CodigoVolume}", // Ajuda visual para o operador saber de qual pedido é a caixa
+                        Bipado = vol.BipadoExpedicao
+                    });
+                }
             }
         }
         AtualizarContadores();
@@ -106,14 +129,14 @@ public partial class ExpedicaoItensPage : ContentPage
             }
             else
             {
-                _errosEvitados++; // <-- Tentou bipar volume já bipado
+                _errosEvitados++;
                 DisplayAlert("Aviso", "Este volume já foi lido!", "OK");
             }
         }
         else
         {
-            _errosEvitados++; // <-- Tentou bipar volume incorreto ou que não pertence ao pedido
-            DisplayAlert("Erro", $"Código '{codigo}' não pertence a este pedido.", "OK");
+            _errosEvitados++;
+            DisplayAlert("Erro", $"Código '{codigo}' não pertence a nenhum pedido deste lote.", "OK");
         }
     }
 
@@ -139,7 +162,15 @@ public partial class ExpedicaoItensPage : ContentPage
     private async void OnCancelarClicked(object sender, EventArgs e)
     {
         bool confirm = await DisplayAlert("Atenção", "Deseja sair da expedição?", "Sim", "Não");
-        if (confirm) await Navigation.PopAsync();
+        if (confirm)
+        {
+            // Em caso de cancelamento, desfaz/reverte os status de todos do lote
+            foreach (var p in _pedidosLote)
+            {
+                await _pedidoService.ReverterEtapaAsync(p.IdPedido);
+            }
+            await Navigation.PopAsync();
+        }
     }
 
     private async Task FinalizarExpedicaoAutomaticaAsync()
@@ -147,17 +178,35 @@ public partial class ExpedicaoItensPage : ContentPage
         if (_isFinalizando) return;
         _isFinalizando = true;
 
-        // Envia os erros acumulados na expedição junto com a conclusão
-        var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(_pedido.IdPedido, _pedido.Status, _usuarioLogado, _errosEvitados);
-        if (sucesso)
+        bool sucessoTotal = true;
+        string mensagemErro = "";
+
+        // Mantém a métrica precisa enviando os erros evitados apenas no primeiro pedido do lote
+        int errosParaEnviar = _errosEvitados;
+
+        foreach (var p in _pedidosLote)
         {
-            await DisplayAlert("Sucesso", "Expedição concluída!", "OK");
+            var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(p.IdPedido, p.Status, _usuarioLogado, errosParaEnviar);
+            errosParaEnviar = 0; // Zera para as próximas iterações para não duplicar o contador de falhas na API
+
+            if (!sucesso)
+            {
+                sucessoTotal = false;
+                mensagemErro = msg;
+                break;
+            }
+        }
+
+        if (sucessoTotal)
+        {
+            string titulo = _pedidosLote.Count > 1 ? "Expedição do Lote concluída!" : "Expedição concluída!";
+            await DisplayAlert("Sucesso", titulo, "OK");
             await Navigation.PopAsync();
         }
         else
         {
             _isFinalizando = false;
-            await DisplayAlert("Erro", msg, "OK");
+            await DisplayAlert("Erro", $"Falha ao baixar um dos pedidos do lote: {mensagemErro}", "OK");
         }
     }
 }
