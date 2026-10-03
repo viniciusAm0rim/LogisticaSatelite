@@ -1,0 +1,155 @@
+﻿@page "/pesquisa"
+@rendermode InteractiveServer
+@using LogisticaSatelite.WebComercial.Models
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fw-bold text-dark">Consulta de Pedidos (Comercial)</h3>
+        <div>
+            <span class="badge @(UsandoMock ? "bg-warning text-dark" : "bg-primary") px-3 py-2 me-2">
+                @(UsandoMock ? "⚠️ Modo Mock (Offline)" : "🟢 API Conectada")
+            </span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="AlternarModoMock">
+                @(UsandoMock ? "Tentar Conectar API" : "Forçar Modo Mock")
+            </button>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm p-4 mb-4">
+        <div class="d-flex gap-2">
+            <input type="text" class="form-control" @bind="TermoPesquisa" placeholder="Pesquisar por ID do pedido ou Nome do cliente..." />
+            <button class="btn btn-primary px-4 fw-bold" @onclick="PesquisarPedidos">Pesquisar</button>
+        </div>
+    </div>
+
+    @if (IsCarregando)
+    {
+        <div class="text-center text-secondary mt-5">
+            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+            <em>Buscando informações...</em>
+        </div>
+    }
+    else if (PedidosFiltrados != null && PedidosFiltrados.Any())
+    {
+        <div class="card border-0 shadow-sm">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">ID</th>
+                        <th>Cliente</th>
+                        <th>Modal</th>
+                        <th>Status Atual</th>
+                        <th class="text-end pe-4">Ação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var pedido in PedidosFiltrados)
+                    {
+                        <tr>
+                            <td class="align-middle ps-4 fw-bold text-secondary">#@pedido.Id.ToString("D4")</td>
+                            <td class="align-middle fw-semibold text-dark">@pedido.Destinatario</td>
+                            <td class="align-middle text-secondary">@pedido.Modal</td>
+                            <td class="align-middle">
+                                <span class="badge bg-warning text-dark px-2 py-1">@pedido.Status</span>
+                            </td>
+                            <td class="align-middle text-end pe-4">
+                                <button class="btn btn-sm btn-dark" @onclick="() => SolicitarEstimativa(pedido.Id)">
+                                    ⏱️ Solicitar Estimativa
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (PedidosFiltrados != null && !PedidosFiltrados.Any())
+    {
+        <div class="alert alert-light border text-center text-secondary py-4">Nenhum pedido encontrado com este termo.</div>
+    }
+</div>
+
+@code {
+    private string TermoPesquisa { get; set; } = "";
+    private bool IsCarregando { get; set; } = false;
+    private bool UsandoMock { get; set; } = false;
+    private List<Pedido> PedidosFiltrados = null;
+
+    // Lista estática de teste igual à do MAUI para simular o offline
+    private List<Pedido> PedidosMockList = new()
+    {
+        new Pedido { Id = 1, Destinatario = "Vinicius Amorim", Status = "Aguardando", Modal = "Transportadora" },
+        new Pedido { Id = 2, Destinatario = "Vinicius Ferreira", Status = "Em Separaçao", Modal = "Retira" },
+        new Pedido { Id = 3, Destinatario = "Vinicius Amorim", Status = "Aguardando Conferencia", Modal = "Transportadora" }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Ao carregar, tenta buscar da API. Se falhar, ativa o Mock automaticamente.
+        await PesquisarPedidos();
+    }
+
+    private void AlternarModoMock()
+    {
+        UsandoMock = !UsandoMock;
+        _ = PesquisarPedidos();
+    }
+
+    private async Task PesquisarPedidos()
+    {
+        IsCarregando = true;
+        PedidosFiltrados = null;
+        List<Pedido> todosPedidos = new();
+
+        if (!UsandoMock)
+        {
+            try
+            {
+                // Tenta buscar na API real
+                var resultado = await Http.GetFromJsonAsync<List<Pedido>>("api/Pedidos");
+                if (resultado != null)
+                {
+                    todosPedidos = resultado;
+                }
+                else
+                {
+                    UsandoMock = true; // Cai para mock se vier vazio
+                    todosPedidos = PedidosMockList;
+                }
+            }
+            catch
+            {
+                // Se a API estiver desligada, ativa o modo Mock automaticamente
+                UsandoMock = true;
+                todosPedidos = PedidosMockList;
+            }
+        }
+        else
+        {
+            todosPedidos = PedidosMockList;
+        }
+
+        string termoBase = TermoPesquisa.Trim().ToLower();
+
+        if (string.IsNullOrEmpty(termoBase))
+        {
+            PedidosFiltrados = todosPedidos;
+        }
+        else
+        {
+            PedidosFiltrados = todosPedidos.Where(p =>
+                p.Id.ToString() == termoBase ||
+                (p.Destinatario != null && p.Destinatario.ToLower().Contains(termoBase))
+            ).ToList();
+        }
+
+        IsCarregando = false;
+    }
+
+    private void SolicitarEstimativa(int idPedido)
+    {
+        Console.WriteLine($"Estimativa solicitada para o pedido {idPedido}");
+    }
+}

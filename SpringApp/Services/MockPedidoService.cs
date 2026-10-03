@@ -27,7 +27,7 @@ public class MockPedidoService : IPedidoService
         new Pedido
         {
             IdPedido = 2,
-            Cliente = "Thaís Martins",
+            Cliente = "Vincius Ferreira",
             Modal = "Retira",
             NomeTransportadora = "Retirada Local",
             CodTransportadora = "CTR-00",

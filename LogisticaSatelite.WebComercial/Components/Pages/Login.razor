@@ -1,0 +1,44 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@inject NavigationManager NavManager
+
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 100vh; background-color: #f8fafc;">
+    <div class="card p-4 shadow-sm border-0" style="width: 380px; border-radius: 12px;">
+        <h4 class="text-center mb-4 text-primary fw-bold">Portal Comercial</h4>
+
+        <div class="mb-3">
+            <label class="form-label text-secondary fw-semibold">Usuário</label>
+            <input type="text" class="form-control" @bind="Usuario" placeholder="Digite seu usuário..." />
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label text-secondary fw-semibold">Senha</label>
+            <input type="password" class="form-control" @bind="Senha" placeholder="Digite sua senha..." />
+        </div>
+
+        @if (!string.IsNullOrEmpty(MensagemErro))
+        {
+            <div class="alert alert-danger p-2 text-center text-sm">@MensagemErro</div>
+        }
+
+        <button class="btn btn-primary w-100 fw-bold py-2" @onclick="FazerLogin">ENTRAR</button>
+    </div>
+</div>
+
+@code {
+    private string Usuario { get; set; } = "";
+    private string Senha { get; set; } = "";
+    private string MensagemErro { get; set; } = "";
+
+    private void FazerLogin()
+    {
+        if (Usuario == "comercial" && Senha == "123")
+        {
+            NavManager.NavigateTo("/pesquisa");
+        }
+        else
+        {
+            MensagemErro = "Credenciais inválidas!";
+        }
+    }
+}
