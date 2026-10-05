@@ -132,4 +132,24 @@ public class PedidoService : IPedidoService
         }
         catch (Exception) { return null; }
     }
+
+    // ==========================================
+    // NOVO MÉTODO: ENVIAR ESTIMATIVA
+    // ==========================================
+    public async Task<(bool Sucesso, string Mensagem)> EnviarEstimativaAsync(int id, string dataHoraEstimada)
+    {
+        try
+        {
+            var payload = new { DataHora = dataHoraEstimada };
+            var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{id}/enviar-estimativa", payload);
+            if (response.IsSuccessStatusCode) return (true, string.Empty);
+
+            string detalhe = await response.Content.ReadAsStringAsync();
+            return (false, $"HTTP {(int)response.StatusCode}: {detalhe}");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de Conexão: {ex.Message}");
+        }
+    }
 }

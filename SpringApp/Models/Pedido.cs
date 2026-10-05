@@ -48,6 +48,16 @@ public class Pedido
     public List<ItemPedido> Itens { get; set; } = new();
 
     [JsonIgnore] public bool IsExpanded { get; set; }
+
+    // Novas propriedades para o fluxo de Estimativa entre Comercial e Supervisor
+    [JsonPropertyName("estimativaSolicitada")]
+    public bool EstimativaSolicitada { get; set; }
+
+    [JsonPropertyName("solicitanteEstimativa")]
+    public string SolicitanteEstimativa { get; set; }
+
+    [JsonPropertyName("dataHoraEstimada")]
+    public string DataHoraEstimada { get; set; }
 }
 
 public class VolumePedidoDto

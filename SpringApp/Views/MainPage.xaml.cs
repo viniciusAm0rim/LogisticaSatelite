@@ -9,14 +9,16 @@ public partial class MainPage : ContentPage
     private string _statusAtualFiltro = "Aguardando";
     private readonly int _perfilLogado;
     private List<Pedido> _pedidosAnteriores = new();
-
-    // Variável para armazenar a lista da aba atual na memória para filtragem rápida
     private List<Pedido> _pedidosAtivos = new();
+
+    // Variável para armazenar o pedido que está recebendo a estimativa no momento
+    private Pedido _pedidoSendoEstimado;
 
     public MainPage(IPedidoService pedidoService)
     {
         InitializeComponent();
         _pedidoService = pedidoService;
+        BindingContext = this;
 
         string matriculaSalva = Preferences.Get("MatriculaLogada", "3");
         if (!int.TryParse(matriculaSalva, out _perfilLogado))
@@ -72,10 +74,12 @@ public partial class MainPage : ContentPage
 
         string acao;
         string matriculaSalva = Preferences.Get("MatriculaLogada", "");
+
         if (_perfilLogado == 4 || matriculaSalva == "4" || matriculaSalva.Contains("supervisor"))
         {
-            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", null, "Relatórios de Produtividade", "Sair da Conta");
-            if (acao == "Relatórios de Produtividade")
+            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", null, "📊 Relatórios de Produtividade", "🚪 Sair da Conta");
+
+            if (acao == "📊 Relatórios de Produtividade")
             {
                 var paginaSuper = Handler.MauiContext.Services.GetService<GestaoSupervisorPage>();
                 await Navigation.PushAsync(paginaSuper);
@@ -84,10 +88,10 @@ public partial class MainPage : ContentPage
         }
         else
         {
-            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", "Sair da Conta");
+            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", "🚪 Sair da Conta");
         }
 
-        if (acao == "Sair da Conta")
+        if (acao == "🚪 Sair da Conta" || acao == "Sair da Conta")
         {
             Preferences.Remove("MatriculaLogada");
             Application.Current.MainPage = new NavigationPage(new LoginPage());
@@ -104,7 +108,6 @@ public partial class MainPage : ContentPage
 
     private async Task CarregarPedidosAsync()
     {
-        // Limpa a barra de pesquisa ao recarregar as abas
         PesquisaExpedicaoBar.Text = string.Empty;
 
         _pedidosAtivos = await _pedidoService.ObterPorStatusAsync(_statusAtualFiltro);
@@ -145,7 +148,6 @@ public partial class MainPage : ContentPage
             _statusAtualFiltro = status;
             AtualizarVisualAbas(abaClicada);
 
-            // Exibe a barra de pesquisa apenas se estiver na aba de expedição
             PesquisaExpedicaoBar.IsVisible = status == "Aguardando Expediçao";
 
             PedidosCollectionView.ItemsSource = null;
@@ -153,9 +155,6 @@ public partial class MainPage : ContentPage
         }
     }
 
-    // ===================================================================
-    // LÓGICA DE PESQUISA E EXPEDIÇÃO EM LOTE
-    // ===================================================================
     private async void OnPesquisaExpedicaoPesquisar(object sender, EventArgs e)
     {
         string termo = PesquisaExpedicaoBar.Text?.Trim().ToLower() ?? "";
@@ -165,19 +164,16 @@ public partial class MainPage : ContentPage
             return;
         }
 
-        // Filtra por nome do cliente ou ID do pedido
         var filtrados = _pedidosAtivos.Where(p =>
             (p.Cliente != null && p.Cliente.ToLower().Contains(termo)) ||
             p.IdPedido.ToString() == termo
         ).ToList();
 
-        // Se encontrou mais de um pedido, pergunta se quer expedir tudo de uma vez
         if (filtrados.Count > 1)
         {
             bool lote = await DisplayAlert("Expedição em Lote", $"Encontramos {filtrados.Count} pedidos aguardando expedição. Deseja selecionar TODOS para bipar os volumes juntos?", "Sim, Todos", "Não, apenas filtrar");
             if (lote)
             {
-                // Passa a LISTA de pedidos filtrados para a página de expedição
                 await Navigation.PushAsync(new ExpedicaoItensPage(filtrados, _pedidoService));
                 return;
             }
@@ -188,7 +184,6 @@ public partial class MainPage : ContentPage
 
     private void OnPesquisaExpedicaoTextChanged(object sender, TextChangedEventArgs e)
     {
-        // Volta a lista completa instantaneamente se o utilizador apagar o texto
         if (string.IsNullOrWhiteSpace(e.NewTextValue))
         {
             PedidosCollectionView.ItemsSource = _pedidosAtivos;
@@ -206,7 +201,7 @@ public partial class MainPage : ContentPage
 
         foreach (var item in mapaAbas)
         {
-            if (item.Botao == abaAtiva)
+            if (abaAtiva != null && item.Botao == abaAtiva)
             {
                 item.Botao.TextColor = Color.FromArgb("#2563eb");
                 item.Linha.Color = Color.FromArgb("#2563eb");
@@ -216,6 +211,63 @@ public partial class MainPage : ContentPage
                 item.Botao.TextColor = Color.FromArgb("#64748b");
                 item.Linha.Color = Colors.Transparent;
             }
+        }
+    }
+
+    // ====================================================================
+    // LÓGICA DO OVERLAY DE ESTIMATIVA COM DATE/TIME PICKER
+    // ====================================================================
+    private void OnEnviarEstimativaSupervisorClicked(object sender, EventArgs e)
+    {
+        if (sender is Button button && button.CommandParameter is Pedido pedido)
+        {
+            _pedidoSendoEstimado = pedido;
+
+            // Atualiza os textos e os valores dos pickers
+            LabelPedidoEstimativa.Text = $"Pedido #{pedido.IdPedido:D4} - {pedido.Cliente}";
+            EstimativaDatePicker.Date = DateTime.Today;
+            EstimativaTimePicker.Time = DateTime.Now.TimeOfDay;
+
+            // Exibe o overlay escuro
+            OverlayEstimativa.IsVisible = true;
+        }
+    }
+
+    private void OnCancelarEstimativaClicked(object sender, EventArgs e)
+    {
+        OverlayEstimativa.IsVisible = false;
+        _pedidoSendoEstimado = null;
+    }
+
+    private async void OnConfirmarEstimativaClicked(object sender, EventArgs e)
+    {
+        if (_pedidoSendoEstimado != null)
+        {
+            // Extração da data e hora (pode manter a sua lógica de formatação se preferir, ou usar esta direta)
+            DateTime data = Convert.ToDateTime(EstimativaDatePicker.Date);
+            string dataFormatada = $"{data.Day:00}/{data.Month:00}/{data.Year}";
+
+            string horaBruta = EstimativaTimePicker.Time.ToString();
+            string horaFormatada = horaBruta.Length >= 5 ? horaBruta.Substring(0, 5) : horaBruta;
+
+            string dataHoraFinal = $"{dataFormatada} {horaFormatada}";
+
+            OverlayEstimativa.IsVisible = false;
+
+            // ESTE É O PASSO CRÍTICO: Enviar a informação para a API real
+            var (sucesso, mensagem) = await _pedidoService.EnviarEstimativaAsync(_pedidoSendoEstimado.IdPedido, dataHoraFinal);
+
+            if (sucesso)
+            {
+                await DisplayAlert("Sucesso", "Data e hora estimada enviadas com sucesso ao comercial!", "OK");
+                await CarregarPedidosAsync(); // Isto vai puxar os dados atualizados da base de dados
+            }
+            else
+            {
+                await DisplayAlert("Erro", $"Falha ao enviar estimativa: {mensagem}", "OK");
+            }
+
+            _pedidoSendoEstimado = null;
         }
     }
 
@@ -247,7 +299,6 @@ public partial class MainPage : ContentPage
                 }
                 else if (pedidoSelecionado.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Usa o construtor normal para um único pedido (ele foi adaptado internamente para listar 1)
                     await Navigation.PushAsync(new ExpedicaoItensPage(pedidoSelecionado, _pedidoService));
                 }
             });

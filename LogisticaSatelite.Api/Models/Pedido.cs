@@ -8,7 +8,7 @@
         public string Status { get; set; } = string.Empty;
 
         public int Volumes { get; set; }
-        public double Peso{ get; set; } // ou double Peso
+        public double Peso { get; set; }
         public string? SepUser { get; set; }
         public string? ConfUser { get; set; }
         public string? ExpUser { get; set; }
@@ -26,6 +26,13 @@
         public int ErrosEvitados { get; set; } = 0;
 
         public string? LockedBy { get; set; }
+
+        // ==========================================
+        // NOVAS PROPRIEDADES DO FLUXO DE ESTIMATIVA
+        // ==========================================
+        public bool EstimativaSolicitada { get; set; } = false;
+        public string? SolicitanteEstimativa { get; set; }
+        public string? DataHoraEstimada { get; set; }
 
         public List<VolumePedido> VolumesPedidos { get; set; } = new();
         public ICollection<ItemPedido> Itens { get; set; } = new List<ItemPedido>();

@@ -9,7 +9,7 @@
         <h3 class="fw-bold text-dark">Consulta de Pedidos (Comercial)</h3>
         <div>
             <span class="badge @(UsandoMock ? "bg-warning text-dark" : "bg-primary") px-3 py-2 me-2">
-                @(UsandoMock ? "⚠️ Modo Mock (Offline)" : "🟢 API Conectada")
+                @(UsandoMock ? "Modo Mock (Offline)" : "API Conectada")
             </span>
             <button class="btn btn-sm btn-outline-secondary" @onclick="AlternarModoMock">
                 @(UsandoMock ? "Tentar Conectar API" : "Forçar Modo Mock")
@@ -41,7 +41,7 @@
                         <th>Cliente</th>
                         <th>Modal</th>
                         <th>Status Atual</th>
-                        <th class="text-end pe-4">Ação</th>
+                        <th class="text-end pe-4">Ação / Estimativa</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -55,9 +55,22 @@
                                 <span class="badge bg-warning text-dark px-2 py-1">@pedido.Status</span>
                             </td>
                             <td class="align-middle text-end pe-4">
-                                <button class="btn btn-sm btn-dark" @onclick="() => SolicitarEstimativa(pedido.Id)">
-                                    ⏱️ Solicitar Estimativa
-                                </button>
+                                @if (!string.IsNullOrEmpty(pedido.DataHoraEstimada))
+                                {
+                                    <span class="badge bg-success px-3 py-2 fs-6"> @pedido.DataHoraEstimada</span>
+                                }
+                                else if (pedido.EstimativaSolicitada)
+                                {
+                                    <button class="btn btn-sm btn-secondary opacity-50" disabled>
+                                        ✓ Solicitado
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-dark" @onclick="() => SolicitarEstimativa(pedido)">
+                                        Solicitar Estimativa
+                                    </button>
+                                }
                             </td>
                         </tr>
                     }
@@ -77,17 +90,15 @@
     private bool UsandoMock { get; set; } = false;
     private List<Pedido> PedidosFiltrados = null;
 
-    // Lista estática de teste igual à do MAUI para simular o offline
     private List<Pedido> PedidosMockList = new()
     {
-        new Pedido { Id = 1, Destinatario = "Vinicius Amorim", Status = "Aguardando", Modal = "Transportadora" },
-        new Pedido { Id = 2, Destinatario = "Vinicius Ferreira", Status = "Em Separaçao", Modal = "Retira" },
-        new Pedido { Id = 3, Destinatario = "Vinicius Amorim", Status = "Aguardando Conferencia", Modal = "Transportadora" }
+        new Pedido { Id = 1, Destinatario = "Vinicius Amorim", Status = "Aguardando", Modal = "Transportadora", EstimativaSolicitada = false },
+        new Pedido { Id = 2, Destinatario = "Vinicius Ferreira", Status = "Em Separaçao", Modal = "Retira", EstimativaSolicitada = false },
+        new Pedido { Id = 3, Destinatario = "Vinicius Amorim", Status = "Aguardando Conferencia", Modal = "Transportadora", EstimativaSolicitada = false }
     };
 
     protected override async Task OnInitializedAsync()
     {
-        // Ao carregar, tenta buscar da API. Se falhar, ativa o Mock automaticamente.
         await PesquisarPedidos();
     }
 
@@ -107,21 +118,12 @@
         {
             try
             {
-                // Tenta buscar na API real
                 var resultado = await Http.GetFromJsonAsync<List<Pedido>>("api/Pedidos");
-                if (resultado != null)
-                {
-                    todosPedidos = resultado;
-                }
-                else
-                {
-                    UsandoMock = true; // Cai para mock se vier vazio
-                    todosPedidos = PedidosMockList;
-                }
+                if (resultado != null) todosPedidos = resultado;
+                else { UsandoMock = true; todosPedidos = PedidosMockList; }
             }
             catch
             {
-                // Se a API estiver desligada, ativa o modo Mock automaticamente
                 UsandoMock = true;
                 todosPedidos = PedidosMockList;
             }
@@ -130,6 +132,11 @@
         {
             todosPedidos = PedidosMockList;
         }
+
+        // REGRA 1: Ocultar pedidos com status "Expedido"
+        todosPedidos = todosPedidos
+            .Where(p => !string.Equals(p.Status, "Expedido", StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
         string termoBase = TermoPesquisa.Trim().ToLower();
 
@@ -148,8 +155,39 @@
         IsCarregando = false;
     }
 
-    private void SolicitarEstimativa(int idPedido)
+    // REGRA 2 & 3: Comunicação real com a API ao solicitar a estimativa
+    private async Task SolicitarEstimativa(Pedido pedido)
     {
-        Console.WriteLine($"Estimativa solicitada para o pedido {idPedido}");
+        if (UsandoMock)
+        {
+            // Comportamento local para o Modo Mock
+            pedido.EstimativaSolicitada = true;
+            pedido.SolicitanteEstimativa = "Comercial (Web)";
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            var response = await Http.PatchAsync($"api/Pedidos/{pedido.Id}/solicitar-estimativa", null);
+            if (response.IsSuccessStatusCode)
+            {
+                // Atualiza localmente e recarrega os dados da API
+                pedido.EstimativaSolicitada = true;
+                pedido.SolicitanteEstimativa = "Comercial (Web)";
+                StateHasChanged();
+            }
+            else
+            {
+                // Tratamento simples caso dê erro na API
+                pedido.EstimativaSolicitada = true;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            pedido.EstimativaSolicitada = true;
+            StateHasChanged();
+        }
     }
 }
