@@ -34,8 +34,11 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            var pedidos = await GetPedidosAsync();
-            return pedidos.Where(p => p.Status.Equals(status, StringComparison.OrdinalIgnoreCase)).ToList();
+            string endpoint = string.IsNullOrEmpty(status)
+                ? "api/pedidos"
+                : $"api/pedidos?status={Uri.EscapeDataString(status)}";
+
+            return await _httpClient.GetFromJsonAsync<List<Pedido>>(endpoint, _jsonOptions) ?? new();
         }
         catch (Exception)
         {

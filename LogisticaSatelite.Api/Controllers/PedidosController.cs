@@ -32,13 +32,21 @@ namespace LogisticaSatelite.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Pedido>>> GetPedidos()
+        public async Task<ActionResult<IEnumerable<Pedido>>> GetPedidos([FromQuery] string? status)
         {
-            var listapedidos = await _context.Pedidos
+            var query = _context.Pedidos
                 .Include(p => p.Itens)
                     .ThenInclude(i => i.Produto)
                 .Include(p => p.VolumesPedidos)
-                .ToListAsync();
+                .AsQueryable();
+
+            // Filtro executado diretamente na base de dados SQLite
+            if (!string.IsNullOrEmpty(status))
+            {
+                query = query.Where(p => p.Status.ToLower() == status.ToLower());
+            }
+
+            var listapedidos = await query.ToListAsync();
 
             return Ok(listapedidos);
         }
@@ -163,7 +171,6 @@ namespace LogisticaSatelite.Api.Controllers
             pedido.SepUser = dto.Usuario;
             pedido.SepFimData = DateTime.Now;
 
-            // Soma/acumula os erros reportados na separação
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
 
@@ -206,7 +213,6 @@ namespace LogisticaSatelite.Api.Controllers
             pedido.ConfUser = dto.Usuario;
             pedido.ConfFimData = DateTime.Now;
 
-            // Soma/acumula os erros reportados na conferência
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
 
@@ -254,7 +260,6 @@ namespace LogisticaSatelite.Api.Controllers
             pedido.ExpUser = dto.Usuario;
             pedido.ExpFimData = DateTime.Now;
 
-            // Soma/acumula os erros reportados na expedição
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
 
@@ -265,7 +270,6 @@ namespace LogisticaSatelite.Api.Controllers
         [HttpPatch("{id}/reverter")]
         public async Task<ActionResult<Pedido>> ReverterEtapa(int id)
         {
-            // Precisamos do Include para limpar os itens ou volumes ao cancelar
             var pedido = await _context.Pedidos
                 .Include(p => p.Itens)
                 .Include(p => p.VolumesPedidos)
@@ -279,7 +283,6 @@ namespace LogisticaSatelite.Api.Controllers
                 pedido.SepInicioData = null;
                 pedido.LockedBy = null;
 
-                // Zera o progresso da separação nos itens
                 foreach (var item in pedido.Itens)
                 {
                     item.ScansSep = 0;
@@ -291,18 +294,16 @@ namespace LogisticaSatelite.Api.Controllers
                 pedido.ConfInicioData = null;
                 pedido.LockedBy = null;
 
-                // Zera o progresso da conferência nos itens
                 foreach (var item in pedido.Itens)
                 {
                     item.ScansConf = 0;
                 }
             }
-            else if (pedido.Status == "Em Expediçao") // Caso futuramente crie o status "Em Expedição" antes da baixa final
+            else if (pedido.Status == "Em Expediçao")
             {
                 pedido.Status = "Aguardando Expediçao";
                 pedido.LockedBy = null;
 
-                // Zera o progresso da expedição nos volumes
                 foreach (var volume in pedido.VolumesPedidos)
                 {
                     volume.BipadoExpedicao = false;

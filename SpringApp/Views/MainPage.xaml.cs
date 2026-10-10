@@ -11,7 +11,6 @@ public partial class MainPage : ContentPage
     private List<Pedido> _pedidosAnteriores = new();
     private List<Pedido> _pedidosAtivos = new();
 
-    // Variável para armazenar o pedido que está recebendo a estimativa no momento
     private Pedido _pedidoSendoEstimado;
 
     public MainPage(IPedidoService pedidoService)
@@ -37,25 +36,25 @@ public partial class MainPage : ContentPage
     {
         if (_perfilLogado == 1)
         {
-            AbaSeparacaoBtn.IsVisible = true;
-            AbaConferenciaBtn.IsVisible = false;
-            AbaExpedicaoBtn.IsVisible = true;
+            ContainerAbaSeparacao.IsVisible = true;
+            ContainerAbaConferencia.IsVisible = false;
+            ContainerAbaExpedicao.IsVisible = true;
             _statusAtualFiltro = "Aguardando";
             AtualizarVisualAbas(AbaSeparacaoBtn);
         }
         else if (_perfilLogado == 2)
         {
-            AbaSeparacaoBtn.IsVisible = false;
-            AbaConferenciaBtn.IsVisible = true;
-            AbaExpedicaoBtn.IsVisible = true;
+            ContainerAbaSeparacao.IsVisible = false;
+            ContainerAbaConferencia.IsVisible = true;
+            ContainerAbaExpedicao.IsVisible = true;
             _statusAtualFiltro = "Aguardando Conferencia";
             AtualizarVisualAbas(AbaConferenciaBtn);
         }
         else
         {
-            AbaSeparacaoBtn.IsVisible = true;
-            AbaConferenciaBtn.IsVisible = true;
-            AbaExpedicaoBtn.IsVisible = true;
+            ContainerAbaSeparacao.IsVisible = true;
+            ContainerAbaConferencia.IsVisible = true;
+            ContainerAbaExpedicao.IsVisible = true;
             _statusAtualFiltro = "Aguardando";
             AtualizarVisualAbas(AbaSeparacaoBtn);
         }
@@ -108,11 +107,29 @@ public partial class MainPage : ContentPage
 
     private async Task CarregarPedidosAsync()
     {
+        ExibirSkeleton(true);
+
         PesquisaExpedicaoBar.Text = string.Empty;
 
         _pedidosAtivos = await _pedidoService.ObterPorStatusAsync(_statusAtualFiltro);
         PedidosCollectionView.ItemsSource = _pedidosAtivos;
 
+        ExibirSkeleton(false);
+
+        if (ListaPedidosAnteriores.IsVisible)
+        {
+            await CarregarPedidosAnterioresAsync();
+        }
+    }
+
+    private void ExibirSkeleton(bool visivel)
+    {
+        SkeletonLoadingView.IsVisible = visivel;
+        PedidosCollectionView.IsVisible = !visivel;
+    }
+
+    private async Task CarregarPedidosAnterioresAsync()
+    {
         var todosPedidos = await _pedidoService.GetPedidosAsync();
 
         if (_statusAtualFiltro == "Aguardando")
@@ -121,14 +138,21 @@ public partial class MainPage : ContentPage
             _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Aguardando Expediçao" || p.Status == "Expedido" || p.Status == "Finalizado").ToList();
         else if (_statusAtualFiltro == "Aguardando Expediçao")
             _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Expedido" || p.Status == "Finalizado").ToList();
+        else
+            _pedidosAnteriores = new List<Pedido>();
 
         BindableLayout.SetItemsSource(ListaPedidosAnteriores, _pedidosAnteriores);
     }
 
-    private void OnTogglePedidosAnterioresTapped(object sender, TappedEventArgs e)
+    private async void OnTogglePedidosAnterioresTapped(object sender, TappedEventArgs e)
     {
         ListaPedidosAnteriores.IsVisible = !ListaPedidosAnteriores.IsVisible;
         SetaPedidosAnteriores.Text = ListaPedidosAnteriores.IsVisible ? "▲" : "▼";
+
+        if (ListaPedidosAnteriores.IsVisible)
+        {
+            await CarregarPedidosAnterioresAsync();
+        }
     }
 
     private void OnPedidoAnteriorItemTapped(object sender, TappedEventArgs e)
@@ -150,7 +174,6 @@ public partial class MainPage : ContentPage
 
             PesquisaExpedicaoBar.IsVisible = status == "Aguardando Expediçao";
 
-            PedidosCollectionView.ItemsSource = null;
             await CarregarPedidosAsync();
         }
     }
@@ -192,43 +215,38 @@ public partial class MainPage : ContentPage
 
     private void AtualizarVisualAbas(Button abaAtiva)
     {
-        var mapaAbas = new (Button Botao, BoxView Linha)[]
+        var mapaAbas = new (Button Botao, Border Pill)[]
         {
-            (AbaSeparacaoBtn, LinhaSeparacao),
-            (AbaConferenciaBtn, LinhaConferencia),
-            (AbaExpedicaoBtn, LinhaExpedicao)
+            (AbaSeparacaoBtn, PillSeparacao),
+            (AbaConferenciaBtn, PillConferencia),
+            (AbaExpedicaoBtn, PillExpedicao)
         };
 
         foreach (var item in mapaAbas)
         {
             if (abaAtiva != null && item.Botao == abaAtiva)
             {
-                item.Botao.TextColor = Color.FromArgb("#2563eb");
-                item.Linha.Color = Color.FromArgb("#2563eb");
+                item.Botao.TextColor = Colors.White;
+                item.Pill.BackgroundColor = Color.FromArgb("#2563eb");
             }
             else
             {
                 item.Botao.TextColor = Color.FromArgb("#64748b");
-                item.Linha.Color = Colors.Transparent;
+                item.Pill.BackgroundColor = Colors.Transparent;
             }
         }
     }
 
-    // ====================================================================
-    // LÓGICA DO OVERLAY DE ESTIMATIVA COM DATE/TIME PICKER
-    // ====================================================================
     private void OnEnviarEstimativaSupervisorClicked(object sender, EventArgs e)
     {
         if (sender is Button button && button.CommandParameter is Pedido pedido)
         {
             _pedidoSendoEstimado = pedido;
 
-            // Atualiza os textos e os valores dos pickers
             LabelPedidoEstimativa.Text = $"Pedido #{pedido.IdPedido:D4} - {pedido.Cliente}";
             EstimativaDatePicker.Date = DateTime.Today;
             EstimativaTimePicker.Time = DateTime.Now.TimeOfDay;
 
-            // Exibe o overlay escuro
             OverlayEstimativa.IsVisible = true;
         }
     }
@@ -243,7 +261,6 @@ public partial class MainPage : ContentPage
     {
         if (_pedidoSendoEstimado != null)
         {
-            // Extração da data e hora (pode manter a sua lógica de formatação se preferir, ou usar esta direta)
             DateTime data = Convert.ToDateTime(EstimativaDatePicker.Date);
             string dataFormatada = $"{data.Day:00}/{data.Month:00}/{data.Year}";
 
@@ -254,13 +271,12 @@ public partial class MainPage : ContentPage
 
             OverlayEstimativa.IsVisible = false;
 
-            // ESTE É O PASSO CRÍTICO: Enviar a informação para a API real
             var (sucesso, mensagem) = await _pedidoService.EnviarEstimativaAsync(_pedidoSendoEstimado.IdPedido, dataHoraFinal);
 
             if (sucesso)
             {
                 await DisplayAlert("Sucesso", "Data e hora estimada enviadas com sucesso ao comercial!", "OK");
-                await CarregarPedidosAsync(); // Isto vai puxar os dados atualizados da base de dados
+                await CarregarPedidosAsync();
             }
             else
             {

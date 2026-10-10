@@ -1,8 +1,10 @@
 using LogisticaSatelite.Api.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Win32;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Força o Kestrel a escutar na placa de rede (0.0.0.0) nas portas HTTP (5283) e HTTPS (7063)
+builder.WebHost.UseUrls("http://0.0.0.0:5283", "https://0.0.0.0:7063");
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -12,30 +14,24 @@ builder.Services.AddControllers()
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
-// Usa SQLite como banco de dados
-//builder.Services.AddDbContext<AppDbContext>: Registra o contexto no container de injeção de dependências da API.
-//options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")): Informa ao Entity Framework Core que o motor do banco de dados escolhido é o SQLite.
-//builder.Configuration.GetConnectionString("DefaultConnection"): Obtém a string de conexão do banco de dados a partir do arquivo appsettings.json, onde "DefaultConnection" é o nome da configuração de conexão.
 
-// Configurações necessárias para o Swagger
+// Configurações do Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
-// Cria a aplicação web com base nas configurações definidas no builder.
 
 app.UseExceptionHandler(_ => { });
-// Configura o middleware de tratamento de exceções para capturar erros não tratados e fornecer respostas apropriadas.
 
-
-// Ativa a interface visual do Swagger apenas em ambiente de desenvolvimento
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Desativado temporariamente para permitir acesso HTTP direto via IP da rede (192.168.15.12)
+// app.UseHttpsRedirection();
+
 app.UseAuthorization();
 app.MapControllers();
 

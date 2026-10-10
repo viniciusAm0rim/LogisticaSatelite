@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using SpringApp.Services;
-using SpringApp.Views; // Certifique-se de importar o namespace das suas views
+using SpringApp.Views;
 
 namespace SpringApp
 {
@@ -17,32 +17,36 @@ namespace SpringApp
                     fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
                 });
 
-            builder.Services.AddSingleton(sp => new HttpClient
+            // IP e Porta HTTP testados e validados no navegador
+            string ipComputador = "192.168.15.12";
+            string baseAddress = $"http://{ipComputador}:5283";
+
+            var handler = new HttpClientHandler
             {
-                BaseAddress = new Uri("https://localhost:44379")
+                // Mantém a flexibilidade para chamadas HTTP/HTTPS na rede local
+                ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+            };
+
+            builder.Services.AddSingleton(sp => new HttpClient(handler)
+            {
+                BaseAddress = new Uri(baseAddress)
             });
 
             // =================================================================
             // CHAVE DE ALTERNÂNCIA ENTRE MOCK E API REAL
-            // true  -> Usa o Mock (Testes Locais)
-            // false -> Usa a API Real (Banco de Dados)
             // =================================================================
-            const bool usarMockLocal = true;
-
+            const bool usarMockLocal = false;
             if (usarMockLocal)
             {
                 builder.Services.AddSingleton<IPedidoService, MockPedidoService>();
             }
             else
             {
-                builder.Services.AddSingleton<IPedidoService, PedidoService>();
+                builder.Services.AddSingleton<IPedidoService, ApiServices>();
             }
 
-            // Registrar as páginas para que recebam a injeção automaticamente
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<GestaoSupervisorPage>();
-            // Se tiver outras páginas que usam o IPedidoService, registre-as aqui também, ex:
-            // builder.Services.AddTransient<SeparacaoItensPage>();
 
             return builder.Build();
         }
