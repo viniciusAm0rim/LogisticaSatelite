@@ -15,6 +15,8 @@ namespace SpringApp
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                     fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+                    // Registro da fonte de ícones do Material Design
+                    fonts.AddFont("MaterialIcons-Regular.ttf", "MaterialIcons");
                 });
 
             // IP e Porta HTTP testados e validados no navegador
@@ -35,7 +37,7 @@ namespace SpringApp
             // =================================================================
             // CHAVE DE ALTERNÂNCIA ENTRE MOCK E API REAL
             // =================================================================
-            const bool usarMockLocal = false;
+            const bool usarMockLocal = true;
             if (usarMockLocal)
             {
                 builder.Services.AddSingleton<IPedidoService, MockPedidoService>();

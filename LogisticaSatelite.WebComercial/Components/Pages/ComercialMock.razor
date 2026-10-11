@@ -1,0 +1,260 @@
+﻿@page "/comercial-mock"
+@using LogisticaSatelite.WebComercial.Models
+@rendermode InteractiveServer
+
+<PageTitle>Painel Comercial - Modo Demonstração (Mock)</PageTitle>
+
+<div class="hero-header mb-4 bg-dark text-white p-4 rounded-3 shadow-sm">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+        <div>
+            <h1 class="display-6 fw-bold mb-1">Painel Comercial (Modo Offline / Mock)</h1>
+            <p class="mb-0 text-white-50">Sessão iniciada como: <strong>Vinicius Amorim</strong></p>
+        </div>
+        <span class="badge bg-warning text-dark fs-6 px-3 py-2">
+            <i class="bi bi-wifi-off me-1"></i> Modo Offline
+        </span>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <!-- Barra de Pesquisa com Lupa Integrada -->
+    <div class="custom-card mb-4">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-8 col-lg-6">
+                <label for="searchId" class="form-label fw-semibold">Pesquisar Pedido por ID</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0">
+                        <i class="bi bi-search text-muted"></i>
+                    </span>
+                    <input type="text" id="searchId" class="form-control border-start-0 ps-0" placeholder="Digite o ID do pedido (ex: 101, 102, 103)..."
+                           @bind="searchIdInput" @bind:event="oninput" @onkeyup="HandleKeyUp" />
+
+                    <button class="btn btn-primary" type="button" @onclick="PesquisarPorId" disabled="@isLoading">
+                        @if (isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                        }
+                        else
+                        {
+                            <span>Buscar</span>
+                        }
+                    </button>
+
+                    @if (!string.IsNullOrWhiteSpace(searchIdInput))
+                    {
+                        <button class="btn btn-outline-secondary" type="button" @onclick="LimparPesquisa" title="Limpar Filtro">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertas -->
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+            @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    <!-- Tabela de Pedidos Mock -->
+    <div class="custom-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">Listagem de Pedidos Demonstração</h5>
+            <button class="btn btn-sm btn-outline-primary" @onclick="AtualizarLista" disabled="@isLoading">
+                <i class="bi bi-arrow-clockwise me-1"></i> Atualizar Lista
+            </button>
+        </div>
+
+        @if (pedidosExibidos == null || !pedidosExibidos.Any())
+        {
+            <div class="text-center py-5 text-muted">
+                <p class="mb-0">Nenhum pedido localizado no sistema mock.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col" style="width: 120px;">ID Pedido</th>
+                            <th scope="col">Cliente / Destinatário</th>
+                            <th scope="col" style="width: 220px;">Status</th>
+                            <th scope="col" class="text-end" style="width: 240px;">Estimativa</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pedido in pedidosExibidos)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="fw-bold text-secondary">#@pedido.Id</span>
+                                </td>
+                                <td>
+                                    <span class="fw-semibold text-dark">@pedido.Destinatario</span>
+                                </td>
+                                <td>
+                                    <!-- Badge de Status Unificada em Cinza Claro e Maior -->
+                                    <span class="badge bg-secondary-subtle text-dark border border-secondary-subtle fs-6 px-3 py-2 fw-semibold">
+                                        @pedido.Status
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    @if (!string.IsNullOrWhiteSpace(pedido.DataHoraEstimada))
+                                    {
+                                        <div class="d-inline-flex align-items-center gap-1 text-success fw-bold px-2 py-1 bg-success-subtle border border-success-subtle rounded-2">
+                                            <i class="bi bi-clock-history"></i>
+                                            <span>@pedido.DataHoraEstimada</span>
+                                        </div>
+                                    }
+                                    else if (pedido.EstimativaSolicitada)
+                                    {
+                                        <!-- Estado Solicitado em Cinza Claro -->
+                                        <button class="btn btn-light border border-secondary-subtle text-dark btn-sm fw-semibold disabled px-3 py-2 fs-6" disabled>
+                                            <span class="spinner-grow spinner-grow-sm me-1" role="status"></span>
+                                            Solicitado
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <!-- Botão Solicitar Estimativa em Cinza Claro -->
+                                        <button class="btn btn-light border border-secondary-subtle text-dark btn-sm fw-semibold px-3 py-2 fs-6"
+                                                @onclick="() => SolicitarEstimativaMock(pedido)"
+                                                disabled="@processandoIds.Contains(pedido.Id)">
+                                            @if (processandoIds.Contains(pedido.Id))
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                <span>Solicitando...</span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-send me-1"></i>
+                                                <span>Solicitar Estimativa</span>
+                                            }
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<PedidoDto> pedidosMockBase = new()
+    {
+        new PedidoDto
+        {
+            Id = 101,
+            Destinatario = "Vinicius Amorim",
+            Status = "Aguardando",
+            EstimativaSolicitada = true,
+            DataHoraEstimada = null
+        },
+        new PedidoDto
+        {
+            Id = 102,
+            Destinatario = "Supermercado Exemplo Ltda",
+            Status = "Em Separação",
+            EstimativaSolicitada = false,
+            DataHoraEstimada = "11/10/2026 16:30"
+        },
+        new PedidoDto
+        {
+            Id = 103,
+            Destinatario = "Distribuidora Paulistana",
+            Status = "Aguardando Conferência",
+            EstimativaSolicitada = false,
+            DataHoraEstimada = null 
+        }
+    };
+
+    private List<PedidoDto> pedidosExibidos = new();
+    private string searchIdInput = "";
+    private bool isLoading = false;
+    private string? errorMessage;
+    private HashSet<int> processandoIds = new();
+
+    protected override void OnInitialized()
+    {
+        pedidosExibidos = new List<PedidoDto>(pedidosMockBase);
+    }
+
+    private void AtualizarLista()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        if (!string.IsNullOrWhiteSpace(searchIdInput) && int.TryParse(searchIdInput.Trim(), out int idValido))
+        {
+            pedidosExibidos = pedidosMockBase.Where(p => p.Id == idValido).ToList();
+        }
+        else
+        {
+            pedidosExibidos = new List<PedidoDto>(pedidosMockBase);
+        }
+
+        isLoading = false;
+    }
+
+    private void PesquisarPorId()
+    {
+        if (string.IsNullOrWhiteSpace(searchIdInput))
+        {
+            AtualizarLista();
+            return;
+        }
+
+        if (!int.TryParse(searchIdInput.Trim(), out int idValido))
+        {
+            errorMessage = "Digite um número de ID válido (ex: 101, 102, 103).";
+            return;
+        }
+
+        var encontrado = pedidosMockBase.FirstOrDefault(p => p.Id == idValido);
+        if (encontrado != null)
+        {
+            pedidosExibidos = new List<PedidoDto> { encontrado };
+            errorMessage = null;
+        }
+        else
+        {
+            pedidosExibidos = new List<PedidoDto>();
+            errorMessage = $"Nenhum pedido localizado no mock com o ID #{idValido}.";
+        }
+    }
+
+    private void LimparPesquisa()
+    {
+        searchIdInput = "";
+        errorMessage = null;
+        AtualizarLista();
+    }
+
+    private void HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            PesquisarPorId();
+        }
+    }
+
+    private async Task SolicitarEstimativaMock(PedidoDto pedido)
+    {
+        if (processandoIds.Contains(pedido.Id)) return;
+
+        processandoIds.Add(pedido.Id);
+        await Task.Delay(300);
+
+        pedido.EstimativaSolicitada = true;
+        processandoIds.Remove(pedido.Id);
+        StateHasChanged();
+    }
+}

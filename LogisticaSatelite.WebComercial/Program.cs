@@ -1,29 +1,31 @@
 using LogisticaSatelite.WebComercial.Components;
-
+using LogisticaSatelite.WebComercial.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Adiciona suporte a Razor Components e Interatividade Server-side
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// ADICIONADO: Configuração do HttpClient apontando para a sua API
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri("https://localhost:44379") });
+// Registro do cliente HTTP tipado para comunicação com a API Backend
+builder.Services.AddHttpClient<IComercialApiService, ComercialApiService>(client =>
+{
+    var apiBaseUrl = builder.Configuration["ApiSettings:BaseUrl"] ?? "http://localhost:5283";
+    client.BaseAddress = new Uri(apiBaseUrl);
+});
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+
 app.UseHttpsRedirection();
-
 app.UseAntiforgery();
-
 app.MapStaticAssets();
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

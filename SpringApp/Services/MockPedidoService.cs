@@ -6,114 +6,133 @@ public class MockPedidoService : IPedidoService
 {
     private static List<Pedido> _pedidosMock = new List<Pedido>
     {
-        // Pedido 1 (Com uma requisição de estimativa pendente para teste no Mock)
+        // Pedido 1 - Aguardando + Estimativa Solicitada pelo Comercial
         new Pedido
         {
-            IdPedido = 1,
-            Cliente = "Vinicius Amorim",
-            Modal = "Transportadora",
-            NomeTransportadora = "Logística Rápida Expresso",
-            CodTransportadora = "CTR-99",
+            IdPedido = 101,
+            Cliente = "AcquAmorim",
+            Modal = "Loja",
+            NomeTransportadora = "Cliente Loja",
+            CodTransportadora = "CTR-00",
             Status = "Aguardando",
             Volumes = 0,
-            EstimativaSolicitada = true, // Ativa o botão de enviar estimativa no App
+            EstimativaSolicitada = true,
             SolicitanteEstimativa = "Comercial (Web)",
             DataHoraEstimada = "",
             Itens = new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 1, CodItem = "001", LocalPicking = "R1-A-01", Quantidade = 2 },
-                new ItemPedido { ProdutoId = 2, CodItem = "002", LocalPicking = "R2-A-05", Quantidade = 1 }
+                new ItemPedido { ProdutoId = 1, CodItem = "001", Nome = "Caixa Organizadora Plástica 30L", LocalPicking = "R1-A-01", Quantidade = 1 },
+                new ItemPedido { ProdutoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", LocalPicking = "R2-A-05", Quantidade = 1 }
             }
         },
 
-        // Pedido 2 (Outro Cliente)
+        // Pedido 2 - Em Separação
         new Pedido
         {
-            IdPedido = 2,
-            Cliente = "Vincius Ferreira",
+            IdPedido = 102,
+            Cliente = "Vinicius",
             Modal = "Retira",
             NomeTransportadora = "Retirada Local",
             CodTransportadora = "CTR-00",
             Status = "Aguardando",
             Volumes = 0,
+            SepUser = "Vinicius",
+            SepInicioData = DateTime.Now.AddMinutes(-20),
             EstimativaSolicitada = false,
+            DataHoraEstimada = "11/10/2026 16:30",
             Itens = new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 3, CodItem = "003", LocalPicking = "R3-C-10", Quantidade = 2 }
+                new ItemPedido { ProdutoId = 3, CodItem = "003", Nome = "Bobina Plástico Bolha 1,20m x 100m", LocalPicking = "R3-C-10", Quantidade = 2 }
             }
         },
 
-        // Pedido 3 (Mesmo cliente do Pedido 1 para testar o LOTE)
+        // Pedido 3 - Aguardando Conferência
         new Pedido
         {
-            IdPedido = 3,
-            Cliente = "Vinicius Amorim", // <-- Mesmo nome para acionar a pesquisa em lote
+            IdPedido = 103,
+            Cliente = "Vinicius",
             Modal = "Transportadora",
-            NomeTransportadora = "Logística Rápida Expresso",
+            NomeTransportadora = "Logística Rápida",
             CodTransportadora = "CTR-99",
-            Status = "Aguardando",
+            Status = "Aguardando Conferencia",
             Volumes = 0,
+            SepUser = "Vinicius Amorim",
+            SepFimData = DateTime.Now.AddHours(-1),
             EstimativaSolicitada = false,
+            DataHoraEstimada = "11/10/2026 18:00",
             Itens = new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 2, CodItem = "002", LocalPicking = "R2-A-05", Quantidade = 2 }
+                new ItemPedido { ProdutoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", LocalPicking = "R2-A-05", Quantidade = 3 }
             }
         }
     };
 
     public async Task<List<Pedido>> GetPedidosAsync()
     {
-        await Task.Delay(300);
+        await Task.Delay(150);
         return _pedidosMock;
     }
 
     public async Task<List<Pedido>> ObterPorStatusAsync(string status)
     {
-        await Task.Delay(300);
+        await Task.Delay(150);
         return _pedidosMock.Where(p => p.Status.Equals(status, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
-    public async Task<Pedido> GetPedidoPorIdAsync(int id)
+    public async Task<List<Pedido>> ObterPorClienteAsync(string termoCliente)
     {
-        await Task.Delay(200);
+        await Task.Delay(150);
+        if (string.IsNullOrWhiteSpace(termoCliente)) return _pedidosMock;
+
+        termoCliente = termoCliente.ToLower().Trim();
+
+        return _pedidosMock.Where(p =>
+            (!string.IsNullOrEmpty(p.Cliente) && p.Cliente.ToLower().Contains(termoCliente)) ||
+            p.IdPedido.ToString() == termoCliente
+        ).ToList();
+    }
+
+    public async Task<Pedido?> GetPedidoPorIdAsync(int id)
+    {
+        await Task.Delay(100);
         return _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
     }
 
     public async Task<(bool Sucesso, string Mensagem)> BloquearPedidoAsync(int id, string usuario)
     {
-        await Task.Delay(200);
+        await Task.Delay(100);
         return (true, string.Empty);
     }
 
     public async Task<(bool Sucesso, string Mensagem)> AvancarEtapaAsync(int id, string etapaAtual, string usuario = null, int errosEvitados = 0)
     {
-        await Task.Delay(500);
+        await Task.Delay(200);
         var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
         if (mock == null) return (false, "Pedido não encontrado.");
 
         DateTime dataHoraAtual = DateTime.Now;
 
-        if (mock.Status == "Aguardando")
+        if (mock.Status.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
         {
-            mock.Status = "Em Separaçao";
+            mock.Status = "Em Separação";
             mock.SepInicioData = dataHoraAtual;
         }
-        else if (mock.Status == "Em Separaçao")
+        else if (mock.Status.Equals("Em Separação", StringComparison.OrdinalIgnoreCase))
         {
-            mock.Status = "Aguardando Conferencia";
-            mock.SepUser = usuario;
+            mock.Status = "Aguardando Conferência";
+            mock.SepUser = usuario ?? "Vinicius";
             mock.SepFimData = dataHoraAtual;
             mock.ErrosEvitados += errosEvitados;
         }
-        else if (mock.Status == "Aguardando Conferencia")
+        else if (mock.Status.Equals("Aguardando Conferência", StringComparison.OrdinalIgnoreCase))
         {
-            mock.Status = "Em Conferencia";
+            mock.Status = "Em Conferência";
             mock.ConfInicioData = dataHoraAtual;
         }
-        else if (mock.Status == "Aguardando Expediçao")
+        else if (mock.Status.Equals("Aguardando Expedição", StringComparison.OrdinalIgnoreCase))
         {
             mock.Status = "Expedido";
-            mock.ExpUser = usuario;
+            mock.ExpUser = usuario ?? "Vinicius";
             mock.ExpFimData = dataHoraAtual;
             mock.ErrosEvitados += errosEvitados;
         }
@@ -123,25 +142,23 @@ public class MockPedidoService : IPedidoService
 
     public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, string usuario = null, int errosEvitados = 0)
     {
-        await Task.Delay(500);
+        await Task.Delay(200);
         var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
         if (mock == null) return (false, "Pedido não encontrado.");
 
-        mock.Status = "Aguardando Expediçao";
+        mock.Status = "Aguardando Expedição";
         mock.Volumes = volumes;
-        mock.ConfUser = usuario;
+        mock.ConfUser = usuario ?? "Vinicius";
         mock.ConfFimData = DateTime.Now;
         mock.ErrosEvitados += errosEvitados;
 
         mock.VolumesPedidos.Clear();
-        int clienteId = mock.Cliente == "Vinicius Amorim" ? 1 : 2;
-
         for (int i = 1; i <= volumes; i++)
         {
             mock.VolumesPedidos.Add(new VolumePedidoDto
             {
                 Id = i,
-                CodigoVolume = $"c{clienteId}p{mock.IdPedido}v{i}",
+                CodigoVolume = $"c1p{mock.IdPedido}v{i}",
                 BipadoExpedicao = false
             });
         }
@@ -151,7 +168,7 @@ public class MockPedidoService : IPedidoService
 
     public async Task<string?> BaixarRelatorioProdutividadeAsync(string operadorFiltro)
     {
-        await Task.Delay(500);
+        await Task.Delay(200);
         string fileName = $"Relatorio_Produtividade_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
         string filePath = Path.Combine(FileSystem.CacheDirectory, fileName);
 
@@ -162,12 +179,6 @@ public class MockPedidoService : IPedidoService
 
         foreach (var p in _pedidosMock)
         {
-            if (!string.IsNullOrEmpty(operadorFiltro) && operadorFiltro != "Todos")
-            {
-                if (p.SepUser != operadorFiltro && p.ConfUser != operadorFiltro && p.ExpUser != operadorFiltro)
-                    continue;
-            }
-
             string sepInicio = p.SepInicioData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
             string sepFim = p.SepFimData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
             string confInicio = p.ConfInicioData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
@@ -183,62 +194,34 @@ public class MockPedidoService : IPedidoService
 
     public async Task<(bool Sucesso, string Mensagem)> ReverterEtapaAsync(int id)
     {
-        await Task.Delay(300);
+        await Task.Delay(150);
         var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
         if (mock == null) return (false, "Pedido não encontrado.");
 
-        if (mock.Status == "Em Separaçao")
+        if (mock.Status.Equals("Em Separação", StringComparison.OrdinalIgnoreCase))
         {
             mock.Status = "Aguardando";
             mock.SepInicioData = null;
-
-            if (mock.Itens != null)
-            {
-                foreach (var item in mock.Itens)
-                {
-                    item.BipagensSeparacao = 0;
-                }
-            }
         }
-        else if (mock.Status == "Em Conferencia")
+        else if (mock.Status.Equals("Em Conferência", StringComparison.OrdinalIgnoreCase))
         {
-            mock.Status = "Aguardando Conferencia";
+            mock.Status = "Aguardando Conferência";
             mock.ConfInicioData = null;
-
-            if (mock.Itens != null)
-            {
-                foreach (var item in mock.Itens)
-                {
-                    item.BipagensConferencia = 0;
-                }
-            }
         }
-        else if (mock.Status == "Em Expediçao")
+        else if (mock.Status.Equals("Expedido", StringComparison.OrdinalIgnoreCase))
         {
-            mock.Status = "Aguardando Expediçao";
-
-            if (mock.VolumesPedidos != null)
-            {
-                foreach (var volume in mock.VolumesPedidos)
-                {
-                    volume.BipadoExpedicao = false;
-                }
-            }
+            mock.Status = "Aguardando Expedição";
         }
 
         return (true, "Sucesso");
     }
 
-    // ====================================================================
-    // IMPLEMENTAÇÃO DA REQUISIÇÃO DE ESTIMATIVA NO MOCK
-    // ====================================================================
     public async Task<(bool Sucesso, string Mensagem)> EnviarEstimativaAsync(int id, string dataHoraEstimada)
     {
-        await Task.Delay(300);
+        await Task.Delay(150);
         var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
         if (mock == null) return (false, "Pedido não encontrado.");
 
-        // Atualiza a data estimada e remove o estado de solicitação para o botão sumir do card
         mock.DataHoraEstimada = dataHoraEstimada;
         mock.EstimativaSolicitada = false;
 

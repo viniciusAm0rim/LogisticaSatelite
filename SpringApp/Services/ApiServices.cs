@@ -37,8 +37,25 @@ public class ApiServices : IPedidoService
             string endpoint = string.IsNullOrEmpty(status)
                 ? "api/pedidos"
                 : $"api/pedidos?status={Uri.EscapeDataString(status)}";
-
             return await _httpClient.GetFromJsonAsync<List<Pedido>>(endpoint, _jsonOptions) ?? new();
+        }
+        catch (Exception)
+        {
+            return new();
+        }
+    }
+
+    public async Task<List<Pedido>> ObterPorClienteAsync(string termoCliente)
+    {
+        try
+        {
+            var todos = await GetPedidosAsync();
+            if (string.IsNullOrWhiteSpace(termoCliente)) return todos;
+            termoCliente = termoCliente.ToLower().Trim();
+            return todos.Where(p =>
+                (!string.IsNullOrEmpty(p.Cliente) && p.Cliente.ToLower().Contains(termoCliente)) ||
+                p.IdPedido.ToString() == termoCliente
+            ).ToList();
         }
         catch (Exception)
         {
@@ -77,9 +94,9 @@ public class ApiServices : IPedidoService
         string endpoint = statusAtual switch
         {
             "Aguardando" => $"api/pedidos/{id}/separar",
-            "Em Separaçao" => $"api/pedidos/{id}/AguardandoConfe",
+            "Em Separação" => $"api/pedidos/{id}/AguardandoConfe",
             "Aguardando Conferencia" => $"api/pedidos/{id}/EmConferencia",
-            "Aguardando Expediçao" => $"api/pedidos/{id}/Expedido",
+            "Aguardando Expedição" => $"api/pedidos/{id}/Expedido",
             _ => string.Empty
         };
 
@@ -111,9 +128,7 @@ public class ApiServices : IPedidoService
         {
             string endpoint = $"api/pedidos/{id}/ConcluirConferencia";
             var dto = new { Usuario = usuario, Volumes = volumes, ErrosEvitados = errosEvitados };
-
             var response = await _httpClient.PatchAsJsonAsync(endpoint, dto, _jsonOptions);
-
             if (response.IsSuccessStatusCode)
                 return (true, string.Empty);
 
@@ -144,7 +159,6 @@ public class ApiServices : IPedidoService
         {
             string url = $"api/relatorio/exportar-csv?operador={Uri.EscapeDataString(operadorFiltro)}";
             var response = await _httpClient.GetAsync(url);
-
             if (response.IsSuccessStatusCode)
             {
                 var bytes = await response.Content.ReadAsByteArrayAsync();
@@ -164,9 +178,8 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            var payload = new { DataHora = dataHoraEstimada };
-            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/enviar-estimativa", payload, _jsonOptions);
-
+            var payload = new { PedidoId = id, DataHora = dataHoraEstimada, DataHoraEstimada = dataHoraEstimada };
+            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/responder-estimativa", payload, _jsonOptions);
             if (response.IsSuccessStatusCode)
                 return (true, string.Empty);
 
@@ -182,7 +195,7 @@ public class ApiServices : IPedidoService
 
 public class ProblemDetailsDto
 {
-    public string Title { get; set; }
+    public string Title { get; set; } = string.Empty;
     public int Status { get; set; }
-    public string Detail { get; set; }
+    public string Detail { get; set; } = string.Empty;
 }

@@ -1,119 +1,129 @@
-
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="SpringApp.Views.LoginPage"
              NavigationPage.HasNavigationBar="False"
              Shell.NavBarIsVisible="False"
-             BackgroundColor="#111827">
+             BackgroundColor="#0f172a">
 
     <Grid Padding="20">
+        <!-- CARD PRINCIPAL BRANCO COM DETALHES EM AZUL -->
         <Border Stroke="Transparent"
                 BackgroundColor="White"
-                Padding="25,30"
+                Padding="28,32"
                 HorizontalOptions="Center"
                 VerticalOptions="Center"
                 WidthRequest="340">
             <Border.StrokeShape>
-                <RoundRectangle CornerRadius="20" />
+                <RoundRectangle CornerRadius="24" />
             </Border.StrokeShape>
+            <Border.Shadow>
+                <Shadow Brush="#000000" Offset="0,10" Radius="20" Opacity="0.25" />
+            </Border.Shadow>
 
-            <VerticalStackLayout Spacing="20">
+            <VerticalStackLayout Spacing="22">
 
-                <Image Source="box.png" 
-                       HeightRequest="70" 
-                       WidthRequest="70" 
-                       HorizontalOptions="Center" />
+                <!-- 1. AVATAR PROFILE (Círculo Azul Claro) -->
+                <Border BackgroundColor="#dbeafe"
+                        Stroke="Transparent"
+                        WidthRequest="80"
+                        HeightRequest="80"
+                        HorizontalOptions="Center"
+                        Margin="0,0,0,5">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="40" />
+                    </Border.StrokeShape>
+                    <Label Text="&#xe7fd;" 
+                           FontFamily="MaterialIcons"
+                           FontSize="40" 
+                           HorizontalOptions="Center" 
+                           VerticalOptions="Center" 
+                           TextColor="#2563eb" />
+                </Border>
 
-                <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                <!-- TÍTULO & SUBTÍTULO -->
+                <VerticalStackLayout Spacing="2" HorizontalOptions="Center">
                     <Label Text="SpringLog" 
-                           FontSize="32" 
+                           FontSize="26" 
                            FontAttributes="Bold" 
-                           TextColor="#0a192f" 
+                           TextColor="#0f172a" 
                            HorizontalTextAlignment="Center" />
                     <Label Text="Mapeamento e Gestão Logística" 
-                           FontSize="13" 
-                           TextColor="#334155" 
+                           FontSize="12" 
+                           TextColor="#475569" 
                            HorizontalTextAlignment="Center" />
                 </VerticalStackLayout>
 
-                <Grid Margin="0,10,0,0">
-                    <Border Stroke="#cbd5e1" 
-                            StrokeThickness="1" 
-                            Padding="12,0" 
-                            HeightRequest="52" 
-                            BackgroundColor="#f8fafc"
-                            Margin="0,8,0,0">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="12" />
-                        </Border.StrokeShape>
+                <!-- 2. CAMPO MATRÍCULA (Barra de texto) -->
+                <Border Stroke="#cbd5e1"
+                        StrokeThickness="1"
+                        BackgroundColor="#f8fafc"
+                        Padding="12,2"
+                        HeightRequest="48">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="Auto, *">
+                        <Label Grid.Column="0" 
+                               Text="&#xe853;" 
+                               FontFamily="MaterialIcons"
+                               FontSize="20" 
+                               TextColor="#2563eb" 
+                               VerticalOptions="Center" 
+                               Margin="0,0,10,0" />
+                        <Entry Grid.Column="1" 
+                               x:Name="MatriculaEntry" 
+                               Placeholder="Digite sua Matrícula" 
+                               PlaceholderColor="#94a3b8" 
+                               TextColor="#0f172a" 
+                               FontSize="14"
+                               BackgroundColor="Transparent"
+                               VerticalOptions="Center" />
+                    </Grid>
+                </Border>
 
-                        <Grid ColumnDefinitions="Auto, *">
-                            <Label Grid.Column="0" Text="" FontSize="18" VerticalOptions="Center" Margin="0,0,8,0" />
-                            <Entry Grid.Column="1" 
-                                   x:Name="MatriculaEntry" 
-                                   Placeholder="Digite sua Matrícula" 
-                                   PlaceholderColor="#94a3b8" 
-                                   TextColor="#0f172a" 
-                                   FontSize="14"
-                                   VerticalOptions="Center" />
-                        </Grid>
-                    </Border>
+                <!-- 3. CAMPO SENHA (Barra de texto) -->
+                <Border Stroke="#cbd5e1"
+                        StrokeThickness="1"
+                        BackgroundColor="#f8fafc"
+                        Padding="12,2"
+                        HeightRequest="48">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="Auto, *">
+                        <Label Grid.Column="0" 
+                               Text="&#xe897;" 
+                               FontFamily="MaterialIcons"
+                               FontSize="20" 
+                               TextColor="#2563eb" 
+                               VerticalOptions="Center" 
+                               Margin="0,0,10,0" />
+                        <Entry Grid.Column="1" 
+                               x:Name="SenhaEntry" 
+                               IsPassword="True" 
+                               Placeholder="Sua Senha" 
+                               PlaceholderColor="#94a3b8" 
+                               TextColor="#0f172a" 
+                               FontSize="14"
+                               BackgroundColor="Transparent"
+                               VerticalOptions="Center" />
+                    </Grid>
+                </Border>
 
-                    <Label Text="Digite sua Matrícula" 
-                           FontSize="11" 
-                           TextColor="#64748b" 
-                           BackgroundColor="#f8fafc" 
-                           Padding="4,0" 
-                           Margin="16,0,0,0" 
-                           HorizontalOptions="Start" 
-                           VerticalOptions="Start" />
-                </Grid>
-
-                <Grid>
-                    <Border Stroke="#cbd5e1" 
-                            StrokeThickness="1" 
-                            Padding="12,0" 
-                            HeightRequest="52" 
-                            BackgroundColor="#f8fafc"
-                            Margin="0,8,0,0">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="12" />
-                        </Border.StrokeShape>
-
-                        <Grid ColumnDefinitions="Auto, *">
-                            <Label Grid.Column="0" Text="" FontSize="18" VerticalOptions="Center" Margin="0,0,8,0" />
-                            <Entry Grid.Column="1" 
-                                   x:Name="SenhaEntry" 
-                                   IsPassword="True" 
-                                   Placeholder="****** sua Senha" 
-                                   PlaceholderColor="#94a3b8" 
-                                   TextColor="#0f172a" 
-                                   FontSize="14"
-                                   VerticalOptions="Center" />
-                        </Grid>
-                    </Border>
-
-                    <Label Text="Digite sua Senha" 
-                           FontSize="11" 
-                           TextColor="#64748b" 
-                           BackgroundColor="#f8fafc" 
-                           Padding="4,0" 
-                           Margin="16,0,0,0" 
-                           HorizontalOptions="Start" 
-                           VerticalOptions="Start" />
-                </Grid>
-
+                <!-- 4. ESQUECI MINHA SENHA -->
                 <Label Text="Esqueci minha senha?" 
-                       FontSize="13" 
-                       TextColor="#334155" 
+                       FontSize="11" 
+                       TextColor="#2563eb" 
+                       FontAttributes="Bold"
                        HorizontalOptions="End" 
-                       Margin="0,-5,0,5">
+                       Margin="0,2,0,5">
                     <Label.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnEsqueciSenhaTapped" />
                     </Label.GestureRecognizers>
                 </Label>
 
-                <!-- BOTÃO E SPINNER COM NOME APROPRIADO -->
+                <!-- 5. BOTÃO ARREDONDADO E SPINNER -->
                 <Grid HeightRequest="48">
                     <Button x:Name="EntrarBtn"
                             Text="ENTRAR NO SISTEMA" 
@@ -122,7 +132,7 @@
                             TextColor="White" 
                             FontAttributes="Bold" 
                             FontSize="13"
-                            CornerRadius="12" />
+                            CornerRadius="24" />
 
                     <ActivityIndicator x:Name="LoadingSpinner" 
                                        IsRunning="False" 

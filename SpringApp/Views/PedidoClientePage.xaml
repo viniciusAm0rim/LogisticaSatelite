@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SpringApp.Views.PedidosClientePage"
+             NavigationPage.HasNavigationBar="False"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="#f8fafc">
+
+    <Grid RowDefinitions="Auto, *" Padding="16,16,16,16" RowSpacing="15">
+
+        <!-- HEADER DA PÁGINA -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto, *" ColumnSpacing="12" VerticalOptions="Center">
+            <Button Grid.Column="0" Clicked="OnVoltarClicked" BackgroundColor="#e2e8f0" TextColor="#0f172a" WidthRequest="42" HeightRequest="42" CornerRadius="21" Padding="0">
+                <Button.ImageSource>
+                    <FontImageSource Glyph="&#xe5c4;" FontFamily="MaterialIcons" Color="#0f172a" Size="22"/>
+                </Button.ImageSource>
+            </Button>
+            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                <Label Text="PEDIDOS DO CLIENTE" FontSize="11" FontAttributes="Bold" TextColor="#64748b"/>
+                <Label x:Name="NomeClienteLabel" Text="CLIENTE" FontSize="18" FontAttributes="Bold" TextColor="#0f172a"/>
+            </VerticalStackLayout>
+        </Grid>
+
+        <!-- LISTA DE PEDIDOS COM CARDS E BOTÕES DE TAMANHO PADRONIZADO -->
+        <CollectionView Grid.Row="1" x:Name="PedidosCollectionView" SelectionMode="None">
+            <CollectionView.EmptyView>
+                <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="8" Padding="20">
+                    <Label Text="&#xe1a1;" FontFamily="MaterialIcons" FontSize="40" HorizontalOptions="Center" TextColor="#94a3b8"/>
+                    <Label Text="Nenhum pedido pendente para este cliente." FontSize="14" TextColor="#94a3b8" HorizontalOptions="Center" FontAttributes="Bold"/>
+                </VerticalStackLayout>
+            </CollectionView.EmptyView>
+
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border Margin="0,0,0,12" Padding="14" Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16" />
+                        </Border.StrokeShape>
+                        <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto" RowSpacing="8">
+
+                            <!-- LINHA SUPERIOR: PEDIDO E TAG DE STATUS -->
+                            <HorizontalStackLayout Grid.Row="0" Grid.Column="0" Spacing="8" VerticalOptions="Center">
+                                <Label Text="{Binding IdPedido, StringFormat='Pedido #{0:D4}'}" FontSize="15" FontAttributes="Bold" TextColor="#0f172a" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+
+                            <Border Grid.Row="0" Grid.Column="1" BackgroundColor="#f1f5f9" Stroke="Transparent" Padding="8,3">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="8" />
+                                </Border.StrokeShape>
+                                <Label Text="{Binding Status}" FontSize="11" FontAttributes="Bold" TextColor="#334155" VerticalOptions="Center" />
+                            </Border>
+
+                            <!-- LINHA INFERIOR: CLIENTE / VIA E BOTÃO DE AÇÃO -->
+                            <VerticalStackLayout Grid.Row="1" Grid.Column="0" VerticalOptions="Center" Spacing="2">
+                                <Label Text="{Binding Cliente, StringFormat='Cliente: {0}'}" FontSize="12" TextColor="#475569" FontAttributes="Bold"/>
+                                <Label Text="{Binding Modal, StringFormat='Via: {0}'}" FontSize="11" TextColor="#64748b"/>
+                            </VerticalStackLayout>
+
+                            <Button Grid.Row="1" Grid.Column="1"
+                                    Text="{Binding BotaoTextoAcao}"
+                                    Clicked="OnAcaoPedidoClicked" 
+                                    CommandParameter="{Binding .}" 
+                                    BackgroundColor="{Binding BotaoCorAcao}" 
+                                    IsEnabled="{Binding BotaoHabilitadoAcao}"
+                                    TextColor="White" 
+                                    FontAttributes="Bold" 
+                                    HeightRequest="38" 
+                                    WidthRequest="120"
+                                    CornerRadius="10" 
+                                    FontSize="12" 
+                                    Padding="0" 
+                                    VerticalOptions="Center"/>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentPage>

@@ -1,0 +1,325 @@
+﻿@page "/comercial"
+@using LogisticaSatelite.WebComercial.Models
+@using LogisticaSatelite.WebComercial.Services
+@inject IComercialApiService ApiService
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Painel Comercial</PageTitle>
+
+<div class="hero-header mb-4">
+    <div class="container-fluid">
+        <h1 class="display-6 fw-bold mb-0">Painel Comercial</h1>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <!-- Barra de Pesquisa com Lupa Integrada -->
+    <div class="custom-card mb-4">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-8 col-lg-6">
+                <label for="searchId" class="form-label fw-semibold">Pesquisar Pedido por ID</label>
+                <div class="input-group">
+                    <!-- Ícone de Lupa dentro do campo de busca -->
+                    <span class="input-group-text bg-white border-end-0">
+                        <i class="bi bi-search text-muted"></i>
+                    </span>
+                    <input type="text" id="searchId" class="form-control border-start-0 ps-0" placeholder="Digite o ID do pedido..."
+                           @bind="searchIdInput" @bind:event="oninput" @onkeyup="HandleKeyUp" />
+
+                    <button class="btn btn-primary" type="button" @onclick="PesquisarPorIdAsync" disabled="@isLoading">
+                        @if (isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                        }
+                        else
+                        {
+                            <span>Buscar</span>
+                        }
+                    </button>
+
+                    @if (!string.IsNullOrWhiteSpace(searchIdInput))
+                    {
+                        <button class="btn btn-outline-secondary" type="button" @onclick="LimparPesquisa" title="Limpar Filtro">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mensagens de Alerta / Erro -->
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+            @errorMessage
+            <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+        </div>
+    }
+
+    <!-- Tabela de Pedidos -->
+    <div class="custom-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">Listagem de Pedidos</h5>
+            <button class="btn btn-sm btn-outline-primary" @onclick="CarregarPedidosAsync" disabled="@isLoading">
+                <i class="bi bi-arrow-clockwise me-1"></i> Atualizar Lista
+            </button>
+        </div>
+
+        @if (isLoading && (pedidos == null || !pedidos.Any()))
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="text-muted mt-2 mb-0">A carregar pedidos da API...</p>
+            </div>
+        }
+        else if (pedidos == null || !pedidos.Any())
+        {
+            <div class="text-center py-5 text-muted">
+                <p class="mb-0">Nenhum pedido encontrado.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col" style="width: 120px;">ID Pedido</th>
+                            <th scope="col">Cliente / Destinatário</th>
+                            <th scope="col" style="width: 200px;">Status</th>
+                            <th scope="col" class="text-end" style="width: 240px;">Estimativa</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pedido in pedidos)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="fw-bold text-secondary">#@pedido.Id</span>
+                                </td>
+                                <td>
+                                    <span class="fw-semibold text-dark">@pedido.Destinatario</span>
+                                </td>
+                                <td>
+                                    <!-- Badge de Status Dinâmico -->
+                                    <span class="badge @ObterBadgeClasse(pedido.Status)">
+                                        @pedido.Status
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    @if (!string.IsNullOrWhiteSpace(pedido.DataHoraEstimada))
+                                    {
+                                        <!-- Exibe a Data e Hora quando a estimativa foi enviada pelo SpringApp -->
+                                        <div class="d-inline-flex align-items-center gap-1 text-success fw-bold px-2 py-1 bg-success-subtle border border-success-subtle rounded-2">
+                                            <i class="bi bi-clock-history"></i>
+                                            <span>@pedido.DataHoraEstimada</span>
+                                        </div>
+                                    }
+                                    else if (pedido.EstimativaSolicitada || string.Equals(pedido.Status, "Solicitado", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <!-- Estado de Solicitação em Andamento -->
+                                        <button class="btn btn-warning btn-sm fw-semibold disabled" disabled>
+                                            <span class="spinner-grow spinner-grow-sm me-1" role="status"></span>
+                                            Solicitado
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <!-- Botão de Solicitar Estimativa -->
+                                        <button class="btn btn-primary-custom btn-sm"
+                                                @onclick="() => SolicitarEstimativaAsync(pedido)"
+                                                disabled="@processandoIds.Contains(pedido.Id)">
+                                            @if (processandoIds.Contains(pedido.Id))
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                <span>A solicitar...</span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-send me-1"></i>
+                                                <span>Solicitar Estimativa</span>
+                                            }
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<PedidoDto> pedidos = new();
+    private string searchIdInput = "";
+    private bool isLoading = false;
+    private string? errorMessage;
+    private HashSet<int> processandoIds = new();
+    private System.Threading.Timer? timerAtualizacao;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarPedidosAsync();
+
+        // Consulta periódica em segundo plano (polling a cada 3 segundos)
+        // Atualiza automaticamente o Status e a Estimativa vindos do App sem piscar a tela
+        timerAtualizacao = new System.Threading.Timer(async _ =>
+        {
+            if (!processandoIds.Any())
+            {
+                await InvokeAsync(async () =>
+                {
+                    await CarregarPedidosSilenciosoAsync();
+                    StateHasChanged();
+                });
+            }
+        }, null, 3000, 3000);
+    }
+
+    /// <summary>
+    /// Carrega os pedidos exibindo o indicador de carregamento.
+    /// </summary>
+    private async Task CarregarPedidosAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(searchIdInput) && int.TryParse(searchIdInput.Trim(), out int idValido))
+            {
+                var pedido = await ApiService.ObterPedidoPorIdAsync(idValido);
+                pedidos = pedido != null ? new List<PedidoDto> { pedido } : new List<PedidoDto>();
+            }
+            else
+            {
+                var resultado = await ApiService.ObterPedidosAsync();
+                pedidos = resultado
+                    .Where(p => !string.Equals(p.Status, "Expedido", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+        }
+        catch (Exception)
+        {
+            errorMessage = "Falha ao carregar a lista de pedidos da API.";
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Atualiza os pedidos em segundo plano sem disparar telas de carregamento.
+    /// </summary>
+    private async Task CarregarPedidosSilenciosoAsync()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(searchIdInput) && int.TryParse(searchIdInput.Trim(), out int idValido))
+            {
+                var pedido = await ApiService.ObterPedidoPorIdAsync(idValido);
+                if (pedido != null)
+                {
+                    pedidos = new List<PedidoDto> { pedido };
+                }
+            }
+            else
+            {
+                var resultado = await ApiService.ObterPedidosAsync();
+                pedidos = resultado
+                    .Where(p => !string.Equals(p.Status, "Expedido", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // Ignora exceções temporárias de rede na atualização em segundo plano
+        }
+    }
+
+    private async Task PesquisarPorIdAsync()
+    {
+        if (string.IsNullOrWhiteSpace(searchIdInput))
+        {
+            await CarregarPedidosAsync();
+            return;
+        }
+
+        if (!int.TryParse(searchIdInput.Trim(), out int idValido))
+        {
+            errorMessage = "Digite um número de ID válido.";
+            return;
+        }
+
+        await CarregarPedidosAsync();
+    }
+
+    private async Task LimparPesquisa()
+    {
+        searchIdInput = "";
+        await CarregarPedidosAsync();
+    }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await PesquisarPorIdAsync();
+        }
+    }
+
+    private async Task SolicitarEstimativaAsync(PedidoDto pedido)
+    {
+        if (processandoIds.Contains(pedido.Id)) return;
+
+        processandoIds.Add(pedido.Id);
+        errorMessage = null;
+
+        try
+        {
+            pedido.EstimativaSolicitada = true;
+            bool sucesso = await ApiService.SolicitarEstimativaAsync(pedido.Id);
+
+            if (!sucesso)
+            {
+                pedido.EstimativaSolicitada = false;
+                errorMessage = $"Não foi possível solicitar a estimativa para o Pedido #{pedido.Id}.";
+            }
+        }
+        catch (Exception)
+        {
+            pedido.EstimativaSolicitada = false;
+            errorMessage = "Ocorreu um erro ao enviar a solicitação de estimativa.";
+        }
+        finally
+        {
+            processandoIds.Remove(pedido.Id);
+            StateHasChanged();
+        }
+    }
+
+    private string ObterBadgeClasse(string status)
+    {
+        return status.ToLower() switch
+        {
+            "aguardando" or "pendente" => "badge-pending",
+            "solicitado" => "bg-warning text-dark",
+            "em separação" or "em separacao" => "bg-info text-dark",
+            "aguardando conferencia" or "aguardando conferência" => "bg-warning text-dark",
+            "em conferencia" or "em conferência" => "bg-primary text-white",
+            "aguardando expedição" or "aguardando expedicao" => "bg-secondary text-white",
+            "estimado" or "concluído" or "concluido" or "entregue" => "badge-success",
+            _ => "bg-secondary text-white"
+        };
+    }
+
+    public void Dispose()
+    {
+        timerAtualizacao?.Dispose();
+    }
+}

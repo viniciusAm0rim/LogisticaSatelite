@@ -16,11 +16,14 @@ namespace LogisticaSatelite.Api.Controllers
             _context = context;
         }
 
+        // ==========================================
+        // LOCK PEDIDO
+        // ==========================================
         [HttpPatch("{id}/lock")]
         public async Task<ActionResult<Pedido>> LockPedido(int id, [FromBody] EtapaRequestDTO dto)
         {
             var pedido = await _context.Pedidos.FindAsync(id);
-            if (pedido == null) return NotFound();
+            if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
             if (!string.IsNullOrEmpty(dto.Usuario))
             {
@@ -31,6 +34,9 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
+        // ==========================================
+        // GET PEDIDOS (COM FILTRO OPCIONAL DE STATUS)
+        // ==========================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Pedido>>> GetPedidos([FromQuery] string? status)
         {
@@ -40,17 +46,18 @@ namespace LogisticaSatelite.Api.Controllers
                 .Include(p => p.VolumesPedidos)
                 .AsQueryable();
 
-            // Filtro executado diretamente na base de dados SQLite
             if (!string.IsNullOrEmpty(status))
             {
                 query = query.Where(p => p.Status.ToLower() == status.ToLower());
             }
 
             var listapedidos = await query.ToListAsync();
-
             return Ok(listapedidos);
         }
 
+        // ==========================================
+        // GET PEDIDO POR ID
+        // ==========================================
         [HttpGet("{Id}")]
         public async Task<ActionResult<Pedido>> GetPedido(int Id)
         {
@@ -60,10 +67,14 @@ namespace LogisticaSatelite.Api.Controllers
                 .Include(p => p.VolumesPedidos)
                 .FirstOrDefaultAsync(p => p.Id == Id);
 
-            if (pedido == null) return NotFound();
+            if (pedido == null) return NotFound(new { message = $"Pedido #{Id} não encontrado." });
+
             return Ok(pedido);
         }
 
+        // ==========================================
+        // CRIAR PEDIDO SIMPLIFICADO
+        // ==========================================
         [HttpPost]
         public async Task<ActionResult<Pedido>> CreatePedido([FromBody] CriarPedidoSimplificadoDTO dto)
         {
@@ -133,6 +144,7 @@ namespace LogisticaSatelite.Api.Controllers
                     .Include(p => p.Itens).ThenInclude(i => i.Produto)
                     .Include(p => p.VolumesPedidos)
                     .FirstOrDefaultAsync(p => p.Id == novoPedido.Id);
+
                 return Ok(pedidoCriado);
             }
             catch (Exception ex)
@@ -141,17 +153,21 @@ namespace LogisticaSatelite.Api.Controllers
             }
         }
 
+        // ==========================================
+        // FLUXO DE SEPARAÇÃO / CONFERÊNCIA / EXPEDIÇÃO
+        // ==========================================
         [HttpPatch("{id}/separar")]
         public async Task<ActionResult<Pedido>> IniciarSeparacao(int id, [FromBody] EtapaRequestDTO dto)
         {
             var pedido = await _context.Pedidos.FindAsync(id);
-            if (pedido == null) return NotFound();
+            if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
             if (pedido.Status != "Aguardando")
                 throw new ExceptionTemplate("O pedido não está disponível para separação.");
 
-            pedido.Status = "Em Separaçao";
+            pedido.Status = "Em Separação";
             pedido.SepInicioData = DateTime.Now;
+
             if (!string.IsNullOrEmpty(dto.Usuario)) pedido.LockedBy = dto.Usuario;
 
             await _context.SaveChangesAsync();
@@ -162,15 +178,14 @@ namespace LogisticaSatelite.Api.Controllers
         public async Task<ActionResult<Pedido>> TerminoSeparacao(int id, [FromBody] EtapaRequestDTO dto)
         {
             var pedido = await _context.Pedidos.FindAsync(id);
-            if (pedido == null) return NotFound();
+            if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
-            if (pedido.Status != "Em Separaçao")
+            if (pedido.Status != "Em Separação")
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
             pedido.Status = "Aguardando Conferencia";
             pedido.SepUser = dto.Usuario;
             pedido.SepFimData = DateTime.Now;
-
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
 
@@ -182,13 +197,14 @@ namespace LogisticaSatelite.Api.Controllers
         public async Task<ActionResult<Pedido>> InicioConferencia(int id, [FromBody] EtapaRequestDTO dto)
         {
             var pedido = await _context.Pedidos.FindAsync(id);
-            if (pedido == null) return NotFound();
+            if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
             if (pedido.Status != "Aguardando Conferencia")
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
             pedido.Status = "Em Conferencia";
             pedido.ConfInicioData = DateTime.Now;
+
             if (!string.IsNullOrEmpty(dto.Usuario)) pedido.LockedBy = dto.Usuario;
 
             await _context.SaveChangesAsync();
@@ -203,7 +219,7 @@ namespace LogisticaSatelite.Api.Controllers
                 .Include(p => p.VolumesPedidos)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
-            if (pedido == null) return NotFound();
+            if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
             if (pedido.Status != "Em Conferencia")
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
@@ -212,7 +228,6 @@ namespace LogisticaSatelite.Api.Controllers
             pedido.Volumes = dto.Volumes;
             pedido.ConfUser = dto.Usuario;
             pedido.ConfFimData = DateTime.Now;
-
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
 
@@ -251,7 +266,7 @@ namespace LogisticaSatelite.Api.Controllers
         public async Task<ActionResult<Pedido>> Expedido(int id, [FromBody] EtapaRequestDTO dto)
         {
             var pedido = await _context.Pedidos.FindAsync(id);
-            if (pedido == null) return NotFound();
+            if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
             if (pedido.Status != "Aguardando Expediçao")
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
@@ -259,7 +274,6 @@ namespace LogisticaSatelite.Api.Controllers
             pedido.Status = "Expedido";
             pedido.ExpUser = dto.Usuario;
             pedido.ExpFimData = DateTime.Now;
-
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
 
@@ -275,14 +289,13 @@ namespace LogisticaSatelite.Api.Controllers
                 .Include(p => p.VolumesPedidos)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
-            if (pedido == null) return NotFound();
+            if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
-            if (pedido.Status == "Em Separaçao")
+            if (pedido.Status == "Em Separação")
             {
                 pedido.Status = "Aguardando";
                 pedido.SepInicioData = null;
                 pedido.LockedBy = null;
-
                 foreach (var item in pedido.Itens)
                 {
                     item.ScansSep = 0;
@@ -293,7 +306,6 @@ namespace LogisticaSatelite.Api.Controllers
                 pedido.Status = "Aguardando Conferencia";
                 pedido.ConfInicioData = null;
                 pedido.LockedBy = null;
-
                 foreach (var item in pedido.Itens)
                 {
                     item.ScansConf = 0;
@@ -303,7 +315,6 @@ namespace LogisticaSatelite.Api.Controllers
             {
                 pedido.Status = "Aguardando Expediçao";
                 pedido.LockedBy = null;
-
                 foreach (var volume in pedido.VolumesPedidos)
                 {
                     volume.BipadoExpedicao = false;
@@ -313,8 +324,99 @@ namespace LogisticaSatelite.Api.Controllers
             await _context.SaveChangesAsync();
             return Ok(pedido);
         }
+
+        // ==========================================
+        // 1. SOLICITAÇÃO DE ESTIMATIVA (WebComercial -> API)
+        // ==========================================
+        [HttpPost("{id}/solicitar-estimativa")]
+        [HttpPatch("{id}/solicitar-estimativa")]
+        [HttpPut("{id}/solicitar-estimativa")]
+        [HttpPost("/api/Pedido/{id}/solicitar-estimativa")]
+        [HttpPatch("/api/Pedido/{id}/solicitar-estimativa")]
+        public async Task<IActionResult> SolicitarEstimativa(int id)
+        {
+            Console.WriteLine($"[API] Solicitação de estimativa recebida para o Pedido ID: {id}");
+
+            var pedido = await _context.Pedidos.FindAsync(id);
+            if (pedido == null)
+            {
+                return NotFound(new { message = $"Pedido #{id} não foi encontrado na base de dados SQLite." });
+            }
+
+            pedido.EstimativaSolicitada = true;
+            pedido.SolicitanteEstimativa = "Comercial";
+
+            await _context.SaveChangesAsync();
+            return Ok(pedido);
+        }
+
+        // ==========================================
+        // 2. RESPOSTA DE ESTIMATIVA (SpringApp -> API)
+        // ==========================================
+        [HttpPost("{id}/estimativa")]
+        [HttpPatch("{id}/estimativa")]
+        [HttpPut("{id}/estimativa")]
+        [HttpPost("{id}/responder-estimativa")]
+        [HttpPatch("{id}/responder-estimativa")]
+        [HttpPut("{id}/responder-estimativa")]
+        [HttpPost("{id}/enviar-estimativa")]
+        [HttpPatch("{id}/enviar-estimativa")]
+        [HttpPut("{id}/enviar-estimativa")]
+        [HttpPost("estimativa")]
+        [HttpPatch("estimativa")]
+        [HttpPut("estimativa")]
+        [HttpPost("responder-estimativa")]
+        [HttpPatch("responder-estimativa")]
+        [HttpPut("responder-estimativa")]
+        [HttpPost("enviar-estimativa")]
+        [HttpPatch("enviar-estimativa")]
+        [HttpPut("enviar-estimativa")]
+        [HttpPost("/api/Pedido/{id}/estimativa")]
+        [HttpPost("/api/Pedido/estimativa")]
+        public async Task<IActionResult> ResponderEstimativa(
+            [FromRoute] int id,
+            [FromBody] ResponderEstimativaDTO? dtoBody,
+            [FromQuery] int? idQuery)
+        {
+            int pedidoIdFinal = id > 0 ? id : (dtoBody?.Id ?? dtoBody?.PedidoId ?? idQuery ?? 0);
+
+            string dataEstimada = !string.IsNullOrWhiteSpace(dtoBody?.DataHoraEstimada)
+                ? dtoBody.DataHoraEstimada
+                : (!string.IsNullOrWhiteSpace(dtoBody?.DataHora)
+                    ? dtoBody.DataHora
+                    : dtoBody?.DataHoraEstimadaString ?? string.Empty);
+
+            Console.WriteLine($"[API] Resposta de estimativa recebida para Pedido ID: {pedidoIdFinal} | Valor: '{dataEstimada}'");
+
+            if (pedidoIdFinal <= 0)
+            {
+                return BadRequest(new { message = "O ID do pedido não foi fornecido na URL nem no corpo da requisição." });
+            }
+
+            var pedido = await _context.Pedidos.FindAsync(pedidoIdFinal);
+            if (pedido == null)
+            {
+                return NotFound(new { message = $"Pedido #{pedidoIdFinal} não foi encontrado na base de dados SQLite." });
+            }
+
+            if (string.IsNullOrWhiteSpace(dataEstimada))
+            {
+                return BadRequest(new { message = "A data/hora estimada é obrigatória." });
+            }
+
+            pedido.DataHoraEstimada = dataEstimada;
+            pedido.EstimativaSolicitada = false; // Conclui o ciclo de solicitação
+
+            await _context.SaveChangesAsync();
+
+            Console.WriteLine($"[API] Estimativa gravada com sucesso para o Pedido #{pedidoIdFinal}!");
+            return Ok(pedido);
+        }
     }
 
+    // ==========================================
+    // DTOs AUXILIARES
+    // ==========================================
     public class EtapaRequestDTO
     {
         public string? Usuario { get; set; }
@@ -334,5 +436,14 @@ namespace LogisticaSatelite.Api.Controllers
     {
         public string CodItem { get; set; } = string.Empty;
         public int Quantidade { get; set; }
+    }
+
+    public class ResponderEstimativaDTO
+    {
+        public int Id { get; set; }
+        public int PedidoId { get; set; }
+        public string? DataHora { get; set; }
+        public string? DataHoraEstimada { get; set; }
+        public string? DataHoraEstimadaString { get; set; }
     }
 }

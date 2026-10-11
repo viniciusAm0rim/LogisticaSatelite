@@ -4,7 +4,8 @@
 
 <div class="container d-flex justify-content-center align-items-center" style="min-height: 100vh; background-color: #f8fafc;">
     <div class="card p-4 shadow-sm border-0" style="width: 380px; border-radius: 12px;">
-        <h4 class="text-center mb-4 text-primary fw-bold">Portal Comercial</h4>
+        <h4 class="text-center mb-1 text-primary fw-bold">Portal Comercial</h4>
+        <p class="text-center text-muted small mb-4">Logística Satélite</p>
 
         <div class="mb-3">
             <label class="form-label text-secondary fw-semibold">Usuário</label>
@@ -18,10 +19,16 @@
 
         @if (!string.IsNullOrEmpty(MensagemErro))
         {
-            <div class="alert alert-danger p-2 text-center text-sm">@MensagemErro</div>
+            <div class="alert alert-danger p-2 text-center text-sm mb-3">@MensagemErro</div>
         }
 
         <button class="btn btn-primary w-100 fw-bold py-2" @onclick="FazerLogin">ENTRAR</button>
+
+        <div class="mt-3 text-center">
+            <span class="badge bg-light text-secondary border">
+                Demo: <strong>Vinicius</strong> / <strong>123</strong>
+            </span>
+        </div>
     </div>
 </div>
 
@@ -32,13 +39,20 @@
 
     private void FazerLogin()
     {
-        if (Usuario == "comercial" && Senha == "123")
+        string u = Usuario.Trim().ToLower();
+        string s = Senha.Trim();
+
+        if (u == "comercial" && s == "123")
         {
-            NavManager.NavigateTo("/pesquisa");
+            NavManager.NavigateTo("/comercial");
+        }
+        else if (u == "vinicius" && s == "123")
+        {
+            NavManager.NavigateTo("/comercial-mock");
         }
         else
         {
-            MensagemErro = "Credenciais inválidas!";
+            MensagemErro = "Credenciais inválidas! Utilize comercial/123 ou Vinicius/123";
         }
     }
 }

@@ -95,6 +95,9 @@
 	  <MauiXaml Update="Views\ExpedicaoItensPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
+	  <MauiXaml Update="Views\PedidoClientePage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
 	  <MauiXaml Update="Views\SeparacaoItensPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>

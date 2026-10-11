@@ -12,6 +12,7 @@ public partial class MainPage : ContentPage
     private List<Pedido> _pedidosAtivos = new();
 
     private Pedido _pedidoSendoEstimado;
+    private string _termoPesquisadoAtual = string.Empty;
 
     public MainPage(IPedidoService pedidoService)
     {
@@ -76,9 +77,9 @@ public partial class MainPage : ContentPage
 
         if (_perfilLogado == 4 || matriculaSalva == "4" || matriculaSalva.Contains("supervisor"))
         {
-            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", null, "📊 Relatórios de Produtividade", "🚪 Sair da Conta");
+            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", null, "Relatórios de Produtividade", "Sair da Conta");
 
-            if (acao == "📊 Relatórios de Produtividade")
+            if (acao == "Relatórios de Produtividade")
             {
                 var paginaSuper = Handler.MauiContext.Services.GetService<GestaoSupervisorPage>();
                 await Navigation.PushAsync(paginaSuper);
@@ -87,10 +88,10 @@ public partial class MainPage : ContentPage
         }
         else
         {
-            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", "🚪 Sair da Conta");
+            acao = await DisplayActionSheet($"Perfil: {nomePerfil}", "Cancelar", "Sair da Conta");
         }
 
-        if (acao == "🚪 Sair da Conta" || acao == "Sair da Conta")
+        if (acao == "Sair da Conta")
         {
             Preferences.Remove("MatriculaLogada");
             Application.Current.MainPage = new NavigationPage(new LoginPage());
@@ -147,7 +148,7 @@ public partial class MainPage : ContentPage
     private async void OnTogglePedidosAnterioresTapped(object sender, TappedEventArgs e)
     {
         ListaPedidosAnteriores.IsVisible = !ListaPedidosAnteriores.IsVisible;
-        SetaPedidosAnteriores.Text = ListaPedidosAnteriores.IsVisible ? "▲" : "▼";
+        SetaPedidosAnteriores.Text = ListaPedidosAnteriores.IsVisible ? "\ue5ce" : "\ue5cf";
 
         if (ListaPedidosAnteriores.IsVisible)
         {
@@ -178,31 +179,67 @@ public partial class MainPage : ContentPage
         }
     }
 
+    // ====================================================================
+    // LÓGICA DE PESQUISA SIMPLIFICADA (EXCLUSÃO DE LOTE)
+    // ====================================================================
     private async void OnPesquisaExpedicaoPesquisar(object sender, EventArgs e)
     {
-        string termo = PesquisaExpedicaoBar.Text?.Trim().ToLower() ?? "";
+        string termo = PesquisaExpedicaoBar.Text?.Trim() ?? "";
         if (string.IsNullOrEmpty(termo))
         {
             PedidosCollectionView.ItemsSource = _pedidosAtivos;
             return;
         }
 
+        _termoPesquisadoAtual = termo;
+
+        // 1. Busca todos os pedidos pendentes do cliente na API / Banco (Omitindo os Expedidos/Finalizados)
+        var todosCliente = await _pedidoService.ObterPorClienteAsync(termo);
+        var pendentes = todosCliente.Where(p =>
+            !p.Status.Equals("Expedido", StringComparison.OrdinalIgnoreCase) &&
+            !p.Status.Equals("Finalizado", StringComparison.OrdinalIgnoreCase)
+        ).ToList();
+
+        // 2. Verifica se existem pedidos com status DIFERENTE de "Aguardando Expediçao"
+        bool temOutrosStatus = pendentes.Any(p => !p.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase));
+
+        if (temOutrosStatus)
+        {
+            // Se houver pedidos em outras etapas, exibe o Pop-up de Escolha
+            LabelTermoPesquisado.Text = $"Busca: \"{termo}\"";
+            OverlayPesquisaCliente.IsVisible = true;
+        }
+        else
+        {
+            // Se todos os pedidos pendentes já estiverem em "Aguardando Expedição", apenas filtra na tela
+            var expedicaoPedidos = pendentes.Where(p => p.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase)).ToList();
+            PedidosCollectionView.ItemsSource = expedicaoPedidos;
+        }
+    }
+
+    // --- Ações do Pop-Up de Pesquisa do Cliente ---
+    private void OnOpcaoPesquisaApenasExpedicaoClicked(object sender, EventArgs e)
+    {
+        OverlayPesquisaCliente.IsVisible = false;
+        string termo = _termoPesquisadoAtual.ToLower();
+
         var filtrados = _pedidosAtivos.Where(p =>
             (p.Cliente != null && p.Cliente.ToLower().Contains(termo)) ||
             p.IdPedido.ToString() == termo
         ).ToList();
 
-        if (filtrados.Count > 1)
-        {
-            bool lote = await DisplayAlert("Expedição em Lote", $"Encontramos {filtrados.Count} pedidos aguardando expedição. Deseja selecionar TODOS para bipar os volumes juntos?", "Sim, Todos", "Não, apenas filtrar");
-            if (lote)
-            {
-                await Navigation.PushAsync(new ExpedicaoItensPage(filtrados, _pedidoService));
-                return;
-            }
-        }
-
         PedidosCollectionView.ItemsSource = filtrados;
+    }
+
+    private async void OnOpcaoPesquisaTodosPedidosClicked(object sender, EventArgs e)
+    {
+        OverlayPesquisaCliente.IsVisible = false;
+        await Navigation.PushAsync(new PedidosClientePage(_termoPesquisadoAtual, _pedidoService));
+    }
+
+    private void OnFecharOverlayPesquisaClicked(object sender, EventArgs e)
+    {
+        OverlayPesquisaCliente.IsVisible = false;
     }
 
     private void OnPesquisaExpedicaoTextChanged(object sender, TextChangedEventArgs e)
@@ -215,23 +252,24 @@ public partial class MainPage : ContentPage
 
     private void AtualizarVisualAbas(Button abaAtiva)
     {
-        var mapaAbas = new (Button Botao, Border Pill)[]
+        var mapaAbas = new (Button Botao, Border Pill, Label Icone, Label Texto)[]
         {
-            (AbaSeparacaoBtn, PillSeparacao),
-            (AbaConferenciaBtn, PillConferencia),
-            (AbaExpedicaoBtn, PillExpedicao)
+            (AbaSeparacaoBtn, PillSeparacao, IconSeparacao, TextSeparacao),
+            (AbaConferenciaBtn, PillConferencia, IconConferencia, TextConferencia),
+            (AbaExpedicaoBtn, PillExpedicao, IconExpedicao, TextExpedicao)
         };
 
         foreach (var item in mapaAbas)
         {
+            item.Icone.TextColor = Colors.White;
+            item.Texto.TextColor = Colors.White;
+
             if (abaAtiva != null && item.Botao == abaAtiva)
             {
-                item.Botao.TextColor = Colors.White;
-                item.Pill.BackgroundColor = Color.FromArgb("#2563eb");
+                item.Pill.BackgroundColor = Color.FromArgb("#475569");
             }
             else
             {
-                item.Botao.TextColor = Color.FromArgb("#64748b");
                 item.Pill.BackgroundColor = Colors.Transparent;
             }
         }

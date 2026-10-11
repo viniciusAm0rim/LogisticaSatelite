@@ -1,15 +1,12 @@
-﻿using LogisticaSatelite.WebComercial.Models;
+﻿namespace LogisticaSatelite.WebComercial.Models;
+
 public class Pedido
 {
     public int Id { get; set; }
-    public string Destinatario { get; set; }
-    public string Modal { get; set; }
-    public string Status { get; set; }
-
-    // Adicione estas propriedades para o fluxo de estimativa:
+    public string Destinatario { get; set; } = string.Empty;
+    public string Modal { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? DataHoraEstimada { get; set; }
     public bool EstimativaSolicitada { get; set; }
-    public string SolicitanteEstimativa { get; set; }
-    public string DataHoraEstimada { get; set; }
-
-    public List<ItemPedido> Itens { get; set; } = new();
+    public string? SolicitanteEstimativa { get; set; }
 }

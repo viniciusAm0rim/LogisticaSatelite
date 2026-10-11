@@ -30,6 +30,7 @@ public class PedidoService : IPedidoService
             var payload = new { Usuario = usuario };
             var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{id}/lock", payload);
             if (response.IsSuccessStatusCode) return (true, string.Empty);
+
             string detalhe = await response.Content.ReadAsStringAsync();
             return (false, $"HTTP {(int)response.StatusCode}: {detalhe}");
         }
@@ -52,6 +53,25 @@ public class PedidoService : IPedidoService
         catch (Exception ex) { Debug.WriteLine($"[ERRO GET STATUS]: {ex.Message}"); return new List<Pedido>(); }
     }
 
+    public async Task<List<Pedido>> ObterPorClienteAsync(string termoCliente)
+    {
+        try
+        {
+            var pedidos = await GetPedidosAsync();
+            if (string.IsNullOrWhiteSpace(termoCliente)) return pedidos;
+            termoCliente = termoCliente.ToLower().Trim();
+            return pedidos.Where(p =>
+                (!string.IsNullOrEmpty(p.Cliente) && p.Cliente.ToLower().Contains(termoCliente)) ||
+                p.IdPedido.ToString() == termoCliente
+            ).ToList();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[ERRO GET POR CLIENTE]: {ex.Message}");
+            return new List<Pedido>();
+        }
+    }
+
     public async Task<Pedido?> GetPedidoPorIdAsync(int id)
     {
         try
@@ -72,19 +92,21 @@ public class PedidoService : IPedidoService
         string rota = statusAtual switch
         {
             "Aguardando" => $"api/pedidos/{id}/separar",
-            "Em Separaçao" => $"api/pedidos/{id}/AguardandoConfe",
+            "Em Separação" => $"api/pedidos/{id}/AguardandoConfe",
             "Aguardando Conferencia" => $"api/pedidos/{id}/EmConferencia",
             "Em Conferencia" => $"api/pedidos/{id}/AguardandoExped",
-            "Aguardando Expediçao" => $"api/pedidos/{id}/Expedido",
+            "Aguardando Expedição" => $"api/pedidos/{id}/Expedido",
             _ => string.Empty
         };
 
         if (string.IsNullOrEmpty(rota)) return (false, $"Status '{statusAtual}' não possui rota configurada.");
+
         try
         {
             var payload = new { Usuario = usuario, ErrosEvitados = errosEvitados };
             var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/{rota}", payload);
             if (response.IsSuccessStatusCode) return (true, string.Empty);
+
             string detalhe = await response.Content.ReadAsStringAsync();
             return (false, $"HTTP {(int)response.StatusCode}: {detalhe}");
         }
@@ -98,6 +120,7 @@ public class PedidoService : IPedidoService
             var payload = new { Volumes = volumes, Usuario = usuario, ErrosEvitados = errosEvitados };
             var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{id}/ConcluirConferencia", payload);
             if (response.IsSuccessStatusCode) return (true, string.Empty);
+
             string detalhe = await response.Content.ReadAsStringAsync();
             return (false, $"HTTP {(int)response.StatusCode}: {detalhe}");
         }
@@ -133,15 +156,12 @@ public class PedidoService : IPedidoService
         catch (Exception) { return null; }
     }
 
-    // ==========================================
-    // NOVO MÉTODO: ENVIAR ESTIMATIVA
-    // ==========================================
     public async Task<(bool Sucesso, string Mensagem)> EnviarEstimativaAsync(int id, string dataHoraEstimada)
     {
         try
         {
-            var payload = new { DataHora = dataHoraEstimada };
-            var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{id}/enviar-estimativa", payload);
+            var payload = new { PedidoId = id, DataHora = dataHoraEstimada, DataHoraEstimada = dataHoraEstimada };
+            var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{id}/responder-estimativa", payload);
             if (response.IsSuccessStatusCode) return (true, string.Empty);
 
             string detalhe = await response.Content.ReadAsStringAsync();

@@ -36,3 +36,40 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+// Captura requisições que não corresponderam a nenhum endpoint (404) e devolve um JSON com o motivo
+app.Use(async (context, next) =>
+{
+    await next();
+
+    if (context.Response.StatusCode == 404 && !context.Response.HasStarted)
+    {
+        context.Response.ContentType = "application/json; charset=utf-8";
+
+        var respostaDetalhada = new
+        {
+            erro = "Rota não encontrada (404)",
+            motivo = "A URL ou o método HTTP enviado pelo aplicativo não existe nesta API.",
+            urlTentada = context.Request.Path.Value,
+            metodoHttp = context.Request.Method,
+            queryParameters = context.Request.QueryString.Value,
+            sugestao = "Verifique se a URL no SpringApp está escrita corretamente e se o ID do pedido está a ser passado na rota ou no corpo."
+        };
+
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true
+        };
+
+        var jsonResponse = System.Text.Json.JsonSerializer.Serialize(respostaDetalhada, jsonOptions);
+
+        // Exibe no terminal da API para depuração imediata
+        Console.WriteLine($"\n[ERRO 404 CAPTURADO]");
+        Console.WriteLine($"-> Método: {context.Request.Method}");
+        Console.WriteLine($"-> URL: {context.Request.Path.Value}");
+        Console.WriteLine($"-> Query: {context.Request.QueryString.Value}\n");
+
+        await context.Response.WriteAsync(jsonResponse);
+    }
+});
+
+app.Run();
