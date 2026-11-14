@@ -8,8 +8,9 @@ public partial class SeparacaoItensPage : ContentPage
     private Pedido _pedido;
     private readonly IPedidoService _pedidoService;
     private bool _isFinalizando = false;
+    private bool _bloqueioFoco = false;
     private readonly int _pedidoId;
-    private int _errosEvitados = 0; // <-- Variável para acumular os erros da separação
+    private int _errosEvitados = 0;
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
     public SeparacaoItensPage(Pedido pedido, IPedidoService pedidoService)
@@ -27,7 +28,46 @@ public partial class SeparacaoItensPage : ContentPage
 
         await _pedidoService.BloquearPedidoAsync(_pedidoId, _usuarioLogado);
         await CarregarPedidoDaApiAsync();
-        Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
+        GarantirFocoLeitor();
+    }
+
+    private void OnLeitorLoaded(object? sender, EventArgs e)
+    {
+        GarantirFocoLeitor();
+    }
+
+    private void GarantirFocoLeitor()
+    {
+        if (_bloqueioFoco || _isFinalizando) return;
+
+        Dispatcher.Dispatch(() =>
+        {
+            if (!_bloqueioFoco && !_isFinalizando)
+                LeitorBluetoothEntry.Focus();
+        });
+
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(150), () =>
+        {
+            if (!_bloqueioFoco && !_isFinalizando)
+                LeitorBluetoothEntry.Focus();
+        });
+    }
+
+    private void OnLeitorUnfocused(object sender, FocusEventArgs e)
+    {
+        if (!_bloqueioFoco && !_isFinalizando)
+        {
+            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(50), () =>
+            {
+                if (!_bloqueioFoco && !_isFinalizando)
+                    LeitorBluetoothEntry.Focus();
+            });
+        }
+    }
+
+    private void OnTelaTapped(object sender, TappedEventArgs e)
+    {
+        GarantirFocoLeitor();
     }
 
     protected override bool OnBackButtonPressed() => true;
@@ -44,47 +84,88 @@ public partial class SeparacaoItensPage : ContentPage
         NumeroPedidoLabel.Text = $"#{_pedido.IdPedido:D4}";
         ClienteLabel.Text = (_pedido.Cliente ?? "").ToUpper();
         ModalLabel.Text = string.IsNullOrEmpty(_pedido.Modal) ? "PADRÃO" : _pedido.Modal.ToUpper();
+
+        // Atribui a lista uma única vez; as atualizações seguintes ocorrem via INotifyPropertyChanged sem destruir os cards
+        ItensCollectionView.ItemsSource = _pedido.Itens;
         AtualizarContadores();
+        GarantirFocoLeitor();
     }
 
-    private void OnCodigoScaneadoCompleted(object sender, EventArgs e)
+    private void OnLeitorTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(e.NewTextValue)) return;
+
+        if (e.NewTextValue.Contains('\r') || e.NewTextValue.Contains('\n'))
+        {
+            string codigoLimpo = e.NewTextValue.Replace("\r", "").Replace("\n", "").Trim();
+            LeitorBluetoothEntry.Text = string.Empty;
+            if (!string.IsNullOrWhiteSpace(codigoLimpo))
+            {
+                _ = ValidarCodigoLidoAsync(codigoLimpo);
+            }
+        }
+    }
+
+    private async void OnCodigoScaneadoCompleted(object sender, EventArgs e)
     {
         if (sender is Entry entry && !string.IsNullOrWhiteSpace(entry.Text))
         {
-            string codigo = entry.Text.Trim();
+            string codigo = entry.Text.Replace("\r", "").Replace("\n", "").Trim();
             entry.Text = string.Empty;
-            var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo, StringComparison.OrdinalIgnoreCase));
-
-            if (item != null)
-            {
-                ProcessarBipagemItem(item);
-            }
-            else
-            {
-                _errosEvitados++; // <-- Contabiliza erro de leitura incorreta na separação
-                DisplayAlert("Atenção", "Código inválido.", "OK");
-            }
-            Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
+            await ValidarCodigoLidoAsync(codigo);
         }
+    }
+
+    private async Task ValidarCodigoLidoAsync(string codigo)
+    {
+        var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo, StringComparison.OrdinalIgnoreCase));
+
+        if (item != null)
+        {
+            ProcessarBipagemItem(item);
+        }
+        else
+        {
+            _errosEvitados++;
+            _bloqueioFoco = true;
+            try
+            {
+                await DisplayAlert("Atenção", "Código inválido.", "OK");
+            }
+            finally
+            {
+                _bloqueioFoco = false;
+            }
+        }
+
+        GarantirFocoLeitor();
     }
 
     private async void OnDigitarCodigoManualClicked(object sender, EventArgs e)
     {
-        string codigo = await DisplayPromptAsync("Manual", "Informe o SKU:", "Confirmar", "Cancelar");
-        if (!string.IsNullOrWhiteSpace(codigo))
+        _bloqueioFoco = true;
+        try
         {
-            var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (item != null)
+            string codigo = await DisplayPromptAsync("Manual", "Informe o SKU:", "Confirmar", "Cancelar");
+            if (!string.IsNullOrWhiteSpace(codigo))
             {
-                ProcessarBipagemItem(item);
-            }
-            else
-            {
-                _errosEvitados++; // <-- Contabiliza erro manual incorreto
-                await DisplayAlert("Erro", "Produto não encontrado.", "OK");
+                var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (item != null)
+                {
+                    ProcessarBipagemItem(item);
+                }
+                else
+                {
+                    _errosEvitados++;
+                    await DisplayAlert("Erro", "Produto não encontrado.", "OK");
+                }
             }
         }
-        Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
+        finally
+        {
+            _bloqueioFoco = false;
+            GarantirFocoLeitor();
+        }
     }
 
     private void ProcessarBipagemItem(ItemPedido item)
@@ -104,20 +185,35 @@ public partial class SeparacaoItensPage : ContentPage
 
         TotalRestanteLabel.Text = sep.ToString();
         TotalGeralLabel.Text = total.ToString();
-        ItensCollectionView.ItemsSource = null;
-        ItensCollectionView.ItemsSource = _pedido.Itens;
 
-        if (total - sep <= 0 && _pedido.Itens.Any()) _ = FinalizarSeparacaoAutomaticaAsync();
+        if (total - sep <= 0 && _pedido.Itens.Any())
+        {
+            _ = FinalizarSeparacaoAutomaticaAsync();
+        }
+        else
+        {
+            GarantirFocoLeitor();
+        }
     }
 
     private async void OnCancelarClicked(object sender, EventArgs e)
     {
-        bool confirm = await DisplayAlert("Atenção", "Deseja cancelar?", "Sim", "Não");
-        if (confirm)
+        _bloqueioFoco = true;
+        try
         {
-            var (sucesso, msg) = await _pedidoService.ReverterEtapaAsync(_pedido.IdPedido);
-            if (sucesso) await Navigation.PopAsync();
+            bool confirm = await DisplayAlert("Atenção", "Deseja sair?", "Sim", "Não");
+            if (confirm)
+            {
+                await _pedidoService.ReverterEtapaAsync(_pedido.IdPedido);
+                await Navigation.PopAsync();
+                return;
+            }
         }
+        finally
+        {
+            _bloqueioFoco = false;
+        }
+        GarantirFocoLeitor();
     }
 
     private async Task FinalizarSeparacaoAutomaticaAsync()
@@ -125,7 +221,6 @@ public partial class SeparacaoItensPage : ContentPage
         if (_isFinalizando) return;
         _isFinalizando = true;
 
-        // Envia os erros evitados acumulados durante a separação para a API
         var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(_pedido.IdPedido, _pedido.Status, _usuarioLogado, _errosEvitados);
         if (sucesso)
         {
@@ -136,6 +231,7 @@ public partial class SeparacaoItensPage : ContentPage
         {
             _isFinalizando = false;
             await DisplayAlert("Erro", msg, "OK");
+            GarantirFocoLeitor();
         }
     }
 }

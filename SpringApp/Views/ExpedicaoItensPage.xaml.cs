@@ -1,13 +1,40 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using SpringApp.Models;
 using SpringApp.Services;
 
 namespace SpringApp.Views;
 
-public class VolumeExpedicao
+public class VolumeExpedicao : INotifyPropertyChanged
 {
-    public string CodigoEsperado { get; set; }
-    public string ExibicaoNome { get; set; }
-    public bool Bipado { get; set; }
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public string CodigoEsperado { get; set; } = string.Empty;
+    public string ExibicaoNome { get; set; } = string.Empty;
+
+    private bool _bipado;
+    public bool Bipado
+    {
+        get => _bipado;
+        set
+        {
+            if (_bipado != value)
+            {
+                _bipado = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CorFundo));
+                OnPropertyChanged(nameof(CorTexto));
+                OnPropertyChanged(nameof(StatusTexto));
+            }
+        }
+    }
+
     public string CorFundo => Bipado ? "#dcfce7" : "#f1f5f9";
     public string CorTexto => Bipado ? "#15803d" : "#64748b";
     public string StatusTexto => Bipado ? "LIDO ✓" : "AGUARDAR";
@@ -19,8 +46,9 @@ public partial class ExpedicaoItensPage : ContentPage
     private readonly List<Pedido> _pedidosLote;
     private readonly IPedidoService _pedidoService;
     private bool _isFinalizando = false;
+    private bool _bloqueioFoco = false;
     private int _errosEvitados = 0;
-    private List<VolumeExpedicao> _listaVolumes;
+    private readonly ObservableCollection<VolumeExpedicao> _listaVolumes;
 
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
@@ -34,8 +62,9 @@ public partial class ExpedicaoItensPage : ContentPage
         InitializeComponent();
         _pedidosLote = pedidosLote;
         _pedidoService = pedidoService;
-        _listaVolumes = new List<VolumeExpedicao>();
+        _listaVolumes = new ObservableCollection<VolumeExpedicao>();
 
+        VolumesCollectionView.ItemsSource = _listaVolumes;
         CarregarDados();
         _ = GerarVolumesDoBancoAsync();
     }
@@ -48,7 +77,46 @@ public partial class ExpedicaoItensPage : ContentPage
         {
             await _pedidoService.BloquearPedidoAsync(p.IdPedido, _usuarioLogado);
         }
-        Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
+        GarantirFocoLeitor();
+    }
+
+    private void OnLeitorLoaded(object? sender, EventArgs e)
+    {
+        GarantirFocoLeitor();
+    }
+
+    private void GarantirFocoLeitor()
+    {
+        if (_bloqueioFoco || _isFinalizando) return;
+
+        Dispatcher.Dispatch(() =>
+        {
+            if (!_bloqueioFoco && !_isFinalizando)
+                LeitorBluetoothEntry.Focus();
+        });
+
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(150), () =>
+        {
+            if (!_bloqueioFoco && !_isFinalizando)
+                LeitorBluetoothEntry.Focus();
+        });
+    }
+
+    private void OnLeitorUnfocused(object sender, FocusEventArgs e)
+    {
+        if (!_bloqueioFoco && !_isFinalizando)
+        {
+            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(50), () =>
+            {
+                if (!_bloqueioFoco && !_isFinalizando)
+                    LeitorBluetoothEntry.Focus();
+            });
+        }
+    }
+
+    private void OnTelaTapped(object sender, TappedEventArgs e)
+    {
+        GarantirFocoLeitor();
     }
 
     protected override bool OnBackButtonPressed() => true;
@@ -64,7 +132,6 @@ public partial class ExpedicaoItensPage : ContentPage
         else
         {
             NumeroPedidoLabel.Text = $"LOTE: {_pedidosLote.Count} PEDIDOS";
-            // Pressupõe que a filtragem do lote foi por cliente
             ClienteLabel.Text = (_pedidosLote[0].Cliente ?? "").ToUpper();
             ModalLabel.Text = "VÁRIOS MODAIS";
         }
@@ -86,37 +153,60 @@ public partial class ExpedicaoItensPage : ContentPage
                     _listaVolumes.Add(new VolumeExpedicao
                     {
                         CodigoEsperado = vol.CodigoVolume,
-                        ExibicaoNome = $"Pedido #{p.IdPedido} | Vol: {vol.CodigoVolume}", // Ajuda visual para o operador saber de qual pedido é a caixa
+                        ExibicaoNome = $"Pedido #{p.IdPedido} | Vol: {vol.CodigoVolume}",
                         Bipado = vol.BipadoExpedicao
                     });
                 }
             }
         }
         AtualizarContadores();
+        GarantirFocoLeitor();
     }
 
-    private void OnCodigoScaneadoCompleted(object sender, EventArgs e)
+    private void OnLeitorTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(e.NewTextValue)) return;
+
+        if (e.NewTextValue.Contains('\r') || e.NewTextValue.Contains('\n'))
+        {
+            string codigoLimpo = e.NewTextValue.Replace("\r", "").Replace("\n", "").Trim();
+            LeitorBluetoothEntry.Text = string.Empty;
+            if (!string.IsNullOrWhiteSpace(codigoLimpo))
+            {
+                _ = ProcessarBipagemVolumeAsync(codigoLimpo);
+            }
+        }
+    }
+
+    private async void OnCodigoScaneadoCompleted(object sender, EventArgs e)
     {
         if (sender is Entry entry && !string.IsNullOrWhiteSpace(entry.Text))
         {
-            string codigo = entry.Text.Trim();
+            string codigo = entry.Text.Replace("\r", "").Replace("\n", "").Trim();
             entry.Text = string.Empty;
-            ProcessarBipagemVolume(codigo);
-            Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
+            await ProcessarBipagemVolumeAsync(codigo);
         }
     }
 
     private async void OnDigitarCodigoManualClicked(object sender, EventArgs e)
     {
-        string codigo = await DisplayPromptAsync("Digitação Manual", "Informe o código do Volume:", "Confirmar", "Cancelar");
-        if (!string.IsNullOrWhiteSpace(codigo))
+        _bloqueioFoco = true;
+        try
         {
-            ProcessarBipagemVolume(codigo.Trim());
+            string codigo = await DisplayPromptAsync("Digitação Manual", "Informe o código do Volume:", "Confirmar", "Cancelar");
+            if (!string.IsNullOrWhiteSpace(codigo))
+            {
+                await ProcessarBipagemVolumeAsync(codigo.Trim());
+            }
         }
-        Device.BeginInvokeOnMainThread(() => { LeitorBluetoothEntry.Focus(); });
+        finally
+        {
+            _bloqueioFoco = false;
+            GarantirFocoLeitor();
+        }
     }
 
-    private void ProcessarBipagemVolume(string codigo)
+    private async Task ProcessarBipagemVolumeAsync(string codigo)
     {
         var volumeEncontrado = _listaVolumes.FirstOrDefault(v => v.CodigoEsperado.Equals(codigo, StringComparison.OrdinalIgnoreCase));
 
@@ -130,14 +220,32 @@ public partial class ExpedicaoItensPage : ContentPage
             else
             {
                 _errosEvitados++;
-                DisplayAlert("Aviso", "Este volume já foi lido!", "OK");
+                _bloqueioFoco = true;
+                try
+                {
+                    await DisplayAlert("Aviso", "Este volume já foi lido!", "OK");
+                }
+                finally
+                {
+                    _bloqueioFoco = false;
+                }
             }
         }
         else
         {
             _errosEvitados++;
-            DisplayAlert("Erro", $"Código '{codigo}' não pertence a nenhum pedido deste lote.", "OK");
+            _bloqueioFoco = true;
+            try
+            {
+                await DisplayAlert("Erro", $"Código '{codigo}' não pertence a nenhum pedido deste lote.", "OK");
+            }
+            finally
+            {
+                _bloqueioFoco = false;
+            }
         }
+
+        GarantirFocoLeitor();
     }
 
     private void AtualizarContadores()
@@ -150,27 +258,38 @@ public partial class ExpedicaoItensPage : ContentPage
         VolumesTotaisLabel.Text = totalVolumes.ToString();
         NumeroVolumeGrandeLabel.Text = Math.Max(0, pendente).ToString();
 
-        VolumesCollectionView.ItemsSource = null;
-        VolumesCollectionView.ItemsSource = _listaVolumes;
-
         if (pendente <= 0 && totalVolumes > 0)
         {
             _ = FinalizarExpedicaoAutomaticaAsync();
+        }
+        else
+        {
+            GarantirFocoLeitor();
         }
     }
 
     private async void OnCancelarClicked(object sender, EventArgs e)
     {
-        bool confirm = await DisplayAlert("Atenção", "Deseja sair da expedição?", "Sim", "Não");
-        if (confirm)
+        _bloqueioFoco = true;
+        try
         {
-            // Em caso de cancelamento, desfaz/reverte os status de todos do lote
-            foreach (var p in _pedidosLote)
+            bool confirm = await DisplayAlert("Atenção", "Deseja sair da expedição?", "Sim", "Não");
+            if (confirm)
             {
-                await _pedidoService.ReverterEtapaAsync(p.IdPedido);
+                // Em caso de cancelamento, desfaz/reverte os status de todos do lote
+                foreach (var p in _pedidosLote)
+                {
+                    await _pedidoService.ReverterEtapaAsync(p.IdPedido);
+                }
+                await Navigation.PopAsync();
+                return;
             }
-            await Navigation.PopAsync();
         }
+        finally
+        {
+            _bloqueioFoco = false;
+        }
+        GarantirFocoLeitor();
     }
 
     private async Task FinalizarExpedicaoAutomaticaAsync()
@@ -207,6 +326,7 @@ public partial class ExpedicaoItensPage : ContentPage
         {
             _isFinalizando = false;
             await DisplayAlert("Erro", $"Falha ao baixar um dos pedidos do lote: {mensagemErro}", "OK");
+            GarantirFocoLeitor();
         }
     }
 }

@@ -41,6 +41,9 @@ public class Pedido
     [JsonPropertyName("expInicioData")] public DateTime? ExpInicioData { get; set; }
     [JsonPropertyName("expFimData")] public DateTime? ExpFimData { get; set; }
 
+    // Propriedade adicionada para o registo da data/hora de cancelamento
+    [JsonPropertyName("cancelData")] public DateTime? CancelData { get; set; }
+
     [JsonPropertyName("volumesPedidos")]
     public List<VolumePedidoDto> VolumesPedidos { get; set; } = new();
 
@@ -49,7 +52,7 @@ public class Pedido
 
     [JsonIgnore] public bool IsExpanded { get; set; }
 
-    // Novas propriedades para o fluxo de Estimativa entre Comercial e Supervisor
+    // Propriedades para o fluxo de Estimativa entre Comercial e Supervisor
     [JsonPropertyName("estimativaSolicitada")]
     public bool EstimativaSolicitada { get; set; }
 

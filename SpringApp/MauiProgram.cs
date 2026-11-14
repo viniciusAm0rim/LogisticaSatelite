@@ -37,7 +37,7 @@ namespace SpringApp
             // =================================================================
             // CHAVE DE ALTERNÂNCIA ENTRE MOCK E API REAL
             // =================================================================
-            const bool usarMockLocal = true;
+            const bool usarMockLocal = false;
             if (usarMockLocal)
             {
                 builder.Services.AddSingleton<IPedidoService, MockPedidoService>();

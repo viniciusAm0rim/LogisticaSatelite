@@ -138,6 +138,20 @@ public class PedidoService : IPedidoService
         catch (Exception ex) { return (false, ex.Message); }
     }
 
+    public async Task<(bool Sucesso, string Mensagem)> CancelarPedidoAsync(int id, string usuario)
+    {
+        try
+        {
+            var payload = new { Usuario = usuario };
+            var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{id}/cancelar", payload);
+            if (response.IsSuccessStatusCode) return (true, string.Empty);
+
+            string detalhe = await response.Content.ReadAsStringAsync();
+            return (false, $"HTTP {(int)response.StatusCode}: {detalhe}");
+        }
+        catch (Exception ex) { return (false, $"Erro de Conexão: {ex.Message}"); }
+    }
+
     public async Task<string?> BaixarRelatorioProdutividadeAsync(string usuarioFiltro)
     {
         try

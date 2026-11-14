@@ -1,7 +1,17 @@
-﻿namespace SpringApp.Models;
+﻿using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
-public class ItemPedido
+namespace SpringApp.Models;
+
+public class ItemPedido : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
     public int Id { get; set; }
     public int PedidoId { get; set; }
     public int ProdutoId { get; set; }
@@ -13,9 +23,43 @@ public class ItemPedido
     public string LocalPulmao { get; set; } = string.Empty;
     public int Quantidade { get; set; }
 
-    // Controles do MAUI (Separação e Conferência)
-    public int BipagensSeparacao { get; set; }
-    public int BipagensConferencia { get; set; }
+    private int _bipagensSeparacao;
+    public int BipagensSeparacao
+    {
+        get => _bipagensSeparacao;
+        set
+        {
+            if (_bipagensSeparacao != value)
+            {
+                _bipagensSeparacao = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(SeparacaoPendente));
+                OnPropertyChanged(nameof(ProgressoSeparacaoTexto));
+                OnPropertyChanged(nameof(BotaoSeparacaoTexto));
+                OnPropertyChanged(nameof(BotaoSeparacaoCorFundo));
+                OnPropertyChanged(nameof(BotaoSeparacaoCorTexto));
+            }
+        }
+    }
+
+    private int _bipagensConferencia;
+    public int BipagensConferencia
+    {
+        get => _bipagensConferencia;
+        set
+        {
+            if (_bipagensConferencia != value)
+            {
+                _bipagensConferencia = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ConferenciaPendente));
+                OnPropertyChanged(nameof(ProgressoConferenciaTexto));
+                OnPropertyChanged(nameof(BotaoConferenciaTexto));
+                OnPropertyChanged(nameof(BotaoConferenciaCorFundo));
+                OnPropertyChanged(nameof(BotaoConferenciaCorTexto));
+            }
+        }
+    }
 
     public int SeparacaoPendente => Math.Max(0, Quantidade - BipagensSeparacao);
     public int ConferenciaPendente => Math.Max(0, Quantidade - BipagensConferencia);

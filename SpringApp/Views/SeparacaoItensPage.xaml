@@ -4,7 +4,25 @@
              x:Class="SpringApp.Views.SeparacaoItensPage"
              NavigationPage.HasNavigationBar="False" Shell.NavBarIsVisible="False" BackgroundColor="#f8fafc">
     <Grid RowDefinitions="*, Auto" RowSpacing="0">
-        <Entry x:Name="LeitorBluetoothEntry" IsVisible="False" Completed="OnCodigoScaneadoCompleted"/>
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnTelaTapped" />
+        </Grid.GestureRecognizers>
+
+        <!-- Campo com dimensões reais para WinUI/Android aceitarem o foco, oculto atrás do card de título -->
+        <Entry x:Name="LeitorBluetoothEntry"
+               Grid.Row="0"
+               ZIndex="-1"
+               Opacity="0.01"
+               HeightRequest="40"
+               WidthRequest="200"
+               Margin="20,15,0,0"
+               HorizontalOptions="Start"
+               VerticalOptions="Start"
+               Loaded="OnLeitorLoaded"
+               Completed="OnCodigoScaneadoCompleted"
+               TextChanged="OnLeitorTextChanged"
+               Unfocused="OnLeitorUnfocused"/>
+
         <ScrollView Grid.Row="0">
             <VerticalStackLayout Padding="20,15" Spacing="15">
                 <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="14">
@@ -52,7 +70,6 @@
                                 </Border.StrokeShape>
                                 <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto, Auto" RowSpacing="4">
 
-                                    <!-- CORREÇÃO AQUI: Mostrando NOME e CODIGO -->
                                     <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="0">
                                         <Label Text="{Binding Nome}" FontAttributes="Bold" FontSize="14" TextColor="#0f172a"/>
                                         <Label Text="{Binding CodItem, StringFormat='Cód: {0}'}" FontSize="9" TextColor="#64748b"/>

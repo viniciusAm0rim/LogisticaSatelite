@@ -153,6 +153,20 @@ public class ApiServices : IPedidoService
         }
     }
 
+    public async Task<(bool Sucesso, string Mensagem)> CancelarPedidoAsync(int id, string usuario)
+    {
+        try
+        {
+            var dto = new { Usuario = usuario };
+            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/cancelar", dto, _jsonOptions);
+            return response.IsSuccessStatusCode ? (true, string.Empty) : (false, "Erro ao cancelar pedido.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     public async Task<string?> BaixarRelatorioProdutividadeAsync(string operadorFiltro)
     {
         try
