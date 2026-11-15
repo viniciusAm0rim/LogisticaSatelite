@@ -40,49 +40,54 @@
             <!-- 2. BARRA DE PESQUISA (Expedição) -->
             <SearchBar x:Name="PesquisaExpedicaoBar" Grid.Row="1" IsVisible="False" Placeholder="Pesquisar Cliente ou Nº Pedido..." SearchButtonPressed="OnPesquisaExpedicaoPesquisar" TextChanged="OnPesquisaExpedicaoTextChanged" BackgroundColor="White" CancelButtonColor="#ef4444" HeightRequest="42" />
 
-            <!-- 3. ABA RETRÁTIL DE PEDIDOS FINALIZADOS -->
-            <Border Grid.Row="2" Stroke="#cbd5e1" StrokeThickness="1" BackgroundColor="White" Padding="12">
+            <!-- 3. CARD SUPERIOR DE PEDIDOS EM ESPERA (PAUSADOS) -->
+            <Border x:Name="CardPedidosEmEspera" Grid.Row="2" IsVisible="False" Stroke="#f59e0b" StrokeThickness="1.5" BackgroundColor="#fffbeb" Padding="12">
                 <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="12"/>
+                    <RoundRectangle CornerRadius="14"/>
                 </Border.StrokeShape>
                 <VerticalStackLayout Spacing="8">
-                    <Grid>
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnTogglePedidosAnterioresTapped"/>
-                        </Grid.GestureRecognizers>
-                        <Label Text="HISTÓRICO CONCLUÍDO NESTA ETAPA" FontSize="11" FontAttributes="Bold" TextColor="#64748b" VerticalOptions="Center"/>
-                        <Label x:Name="SetaPedidosAnteriores" Text="&#xe5cf;" FontFamily="MaterialIcons" HorizontalOptions="End" TextColor="#64748b" FontSize="18" VerticalOptions="Center"/>
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="6">
+                        <Label Grid.Column="0" Text="&#xe034;" FontFamily="MaterialIcons" TextColor="#d97706" FontSize="18" VerticalOptions="Center"/>
+                        <Label Grid.Column="1" Text="PEDIDOS EM ESPERA" FontSize="11" FontAttributes="Bold" TextColor="#b45309" VerticalOptions="Center"/>
+                        <Border Grid.Column="2" BackgroundColor="#fef3c7" Stroke="Transparent" Padding="8,2">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8"/>
+                            </Border.StrokeShape>
+                            <Label x:Name="ContadorEsperaLabel" Text="0" FontSize="11" FontAttributes="Bold" TextColor="#b45309"/>
+                        </Border>
                     </Grid>
-                    <StackLayout x:Name="ListaPedidosAnteriores" IsVisible="False">
+
+                    <StackLayout x:Name="ListaPedidosEmEspera" Spacing="6">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
-                                <Border Opacity="0.95" Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="#f1f5f9" Padding="10" Margin="0,0,0,6">
+                                <Border Stroke="#fde68a" StrokeThickness="1" BackgroundColor="White" Padding="10">
                                     <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="8"/>
+                                        <RoundRectangle CornerRadius="10"/>
                                     </Border.StrokeShape>
-                                    <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnPedidoAnteriorItemTapped" CommandParameter="{Binding .}"/>
-                                    </Border.GestureRecognizers>
-                                    <VerticalStackLayout Spacing="4">
-                                        <Grid ColumnDefinitions="*, Auto">
-                                            <Label Grid.Column="0" Text="{Binding IdPedido, StringFormat='PEDIDO #{0:D4}'}" FontAttributes="Bold" FontSize="13" TextColor="#334155"/>
-                                            <Label Grid.Column="1" Text="{Binding Status}" FontSize="10" FontAttributes="Bold" TextColor="#64748b" VerticalOptions="Center"/>
-                                        </Grid>
-
-                                        <VerticalStackLayout IsVisible="{Binding IsExpanded}" Spacing="3" Margin="0,4,0,0">
-                                            <Label Text="{Binding Cliente, StringFormat='Cliente: {0}'}" FontAttributes="Bold" FontSize="11" TextColor="#475569"/>
-                                            <BoxView HeightRequest="1" Color="#cbd5e1" Margin="0,2"/>
-
-                                            <Label Text="{Binding SepUser, StringFormat='Separado por: {0}'}" FontSize="10" TextColor="#64748b"/>
-                                            <Label Text="{Binding SepFimData, StringFormat='Data Separação: {0:dd/MM/yyyy HH:mm}'}" FontSize="10" TextColor="#64748b"/>
-
-                                            <Label Text="{Binding ConfUser, StringFormat='Conferido por: {0}'}" FontSize="10" TextColor="#64748b"/>
-                                            <Label Text="{Binding ConfFimData, StringFormat='Data Conferência: {0:dd/MM/yyyy HH:mm}'}" FontSize="10" TextColor="#64748b"/>
-
-                                            <Label Text="{Binding ExpUser, StringFormat='Expedido por: {0}'}" FontSize="10" TextColor="#64748b"/>
-                                            <Label Text="{Binding ExpFimData, StringFormat='Data Expedição: {0:dd/MM/yyyy HH:mm}'}" FontSize="10" TextColor="#64748b"/>
+                                    <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8">
+                                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center" Spacing="2">
+                                            <HorizontalStackLayout Spacing="6">
+                                                <Label Text="{Binding IdPedido, StringFormat='Pedido #{0:D4}'}" FontAttributes="Bold" FontSize="13" TextColor="#0f172a"/>
+                                                <Label Text="{Binding Modal, StringFormat='• {0}'}" FontSize="11" TextColor="#64748b" VerticalOptions="Center"/>
+                                            </HorizontalStackLayout>
+                                            <Label Text="{Binding Cliente, StringFormat='Cliente: {0}'}" FontSize="12" TextColor="#475569" FontAttributes="Bold"/>
+                                            <Label Text="{Binding ResumoProgressoEspera}" FontSize="11" TextColor="#d97706" FontAttributes="Bold"/>
                                         </VerticalStackLayout>
-                                    </VerticalStackLayout>
+
+                                        <Button Grid.Column="1"
+                                                Text="Retomar"
+                                                Clicked="OnRetomarPedidoEsperaClicked"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="#f59e0b"
+                                                TextColor="White"
+                                                FontAttributes="Bold"
+                                                FontSize="12"
+                                                HeightRequest="36"
+                                                WidthRequest="92"
+                                                CornerRadius="10"
+                                                Padding="0"
+                                                VerticalOptions="Center"/>
+                                    </Grid>
                                 </Border>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>

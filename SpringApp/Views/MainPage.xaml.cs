@@ -8,11 +8,12 @@ public partial class MainPage : ContentPage
     private readonly IPedidoService _pedidoService;
     private string _statusAtualFiltro = "Aguardando";
     private readonly int _perfilLogado;
-    private List<Pedido> _pedidosAnteriores = new();
+    private List<Pedido> _pedidosEmEspera = new();
     private List<Pedido> _pedidosAtivos = new();
 
     private Pedido _pedidoSendoEstimado;
     private string _termoPesquisadoAtual = string.Empty;
+    private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
     public MainPage(IPedidoService pedidoService)
     {
@@ -115,12 +116,9 @@ public partial class MainPage : ContentPage
         _pedidosAtivos = await _pedidoService.ObterPorStatusAsync(_statusAtualFiltro);
         PedidosCollectionView.ItemsSource = _pedidosAtivos;
 
-        ExibirSkeleton(false);
+        await CarregarPedidosEmEsperaAsync();
 
-        if (ListaPedidosAnteriores.IsVisible)
-        {
-            await CarregarPedidosAnterioresAsync();
-        }
+        ExibirSkeleton(false);
     }
 
     private void ExibirSkeleton(bool visivel)
@@ -129,40 +127,54 @@ public partial class MainPage : ContentPage
         PedidosCollectionView.IsVisible = !visivel;
     }
 
-    private async Task CarregarPedidosAnterioresAsync()
+    private async Task CarregarPedidosEmEsperaAsync()
     {
         var todosPedidos = await _pedidoService.GetPedidosAsync();
 
-        if (_statusAtualFiltro == "Aguardando")
-            _pedidosAnteriores = todosPedidos.Where(p => p.Status != "Aguardando" && p.Status != "Em Separaçao").ToList();
-        else if (_statusAtualFiltro == "Aguardando Conferencia")
-            _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Aguardando Expediçao" || p.Status == "Expedido" || p.Status == "Finalizado").ToList();
-        else if (_statusAtualFiltro == "Aguardando Expediçao")
-            _pedidosAnteriores = todosPedidos.Where(p => p.Status == "Expedido" || p.Status == "Finalizado").ToList();
-        else
-            _pedidosAnteriores = new List<Pedido>();
+        string etapaFiltro = _statusAtualFiltro switch
+        {
+            "Aguardando" => "Separação",
+            "Aguardando Conferencia" => "Conferência",
+            "Aguardando Expediçao" => "Expedição",
+            _ => string.Empty
+        };
 
-        BindableLayout.SetItemsSource(ListaPedidosAnteriores, _pedidosAnteriores);
+        _pedidosEmEspera = todosPedidos
+            .Where(p => p.EmEspera && p.EtapaPausada.Equals(etapaFiltro, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        CardPedidosEmEspera.IsVisible = _pedidosEmEspera.Any();
+        ContadorEsperaLabel.Text = _pedidosEmEspera.Count.ToString();
+        BindableLayout.SetItemsSource(ListaPedidosEmEspera, null);
+        BindableLayout.SetItemsSource(ListaPedidosEmEspera, _pedidosEmEspera);
     }
 
-    private async void OnTogglePedidosAnterioresTapped(object sender, TappedEventArgs e)
+    private async void OnRetomarPedidoEsperaClicked(object sender, EventArgs e)
     {
-        ListaPedidosAnteriores.IsVisible = !ListaPedidosAnteriores.IsVisible;
-        SetaPedidosAnteriores.Text = ListaPedidosAnteriores.IsVisible ? "\ue5ce" : "\ue5cf";
-
-        if (ListaPedidosAnteriores.IsVisible)
+        if (sender is Button button && button.CommandParameter is Pedido pedidoPausado)
         {
-            await CarregarPedidosAnterioresAsync();
-        }
-    }
+            await ExecutarComLoadingAsync(button, "Aguarde...", async () =>
+            {
+                var (sucesso, mensagem) = await _pedidoService.RetomarPedidoAsync(pedidoPausado.IdPedido, _usuarioLogado);
+                if (!sucesso)
+                {
+                    await DisplayAlert("Erro", mensagem, "OK");
+                    return;
+                }
 
-    private void OnPedidoAnteriorItemTapped(object sender, TappedEventArgs e)
-    {
-        if (sender is Border border && border.BindingContext is Pedido pedidoTapped)
-        {
-            pedidoTapped.IsExpanded = !pedidoTapped.IsExpanded;
-            BindableLayout.SetItemsSource(ListaPedidosAnteriores, null);
-            BindableLayout.SetItemsSource(ListaPedidosAnteriores, _pedidosAnteriores);
+                if (pedidoPausado.EtapaPausada.Equals("Separação", StringComparison.OrdinalIgnoreCase))
+                {
+                    await Navigation.PushAsync(new SeparacaoItensPage(pedidoPausado, _pedidoService));
+                }
+                else if (pedidoPausado.EtapaPausada.Equals("Conferência", StringComparison.OrdinalIgnoreCase))
+                {
+                    await Navigation.PushAsync(new ConferenciaItensPage(pedidoPausado, _pedidoService));
+                }
+                else if (pedidoPausado.EtapaPausada.Equals("Expedição", StringComparison.OrdinalIgnoreCase))
+                {
+                    await Navigation.PushAsync(new ExpedicaoItensPage(pedidoPausado, _pedidoService));
+                }
+            });
         }
     }
 
@@ -193,26 +205,22 @@ public partial class MainPage : ContentPage
 
         _termoPesquisadoAtual = termo;
 
-        // 1. Busca todos os pedidos pendentes do cliente na API / Banco (Omitindo os Expedidos/Finalizados)
         var todosCliente = await _pedidoService.ObterPorClienteAsync(termo);
         var pendentes = todosCliente.Where(p =>
             !p.Status.Equals("Expedido", StringComparison.OrdinalIgnoreCase) &&
             !p.Status.Equals("Finalizado", StringComparison.OrdinalIgnoreCase)
         ).ToList();
 
-        // 2. Verifica se existem pedidos com status DIFERENTE de "Aguardando Expediçao"
         bool temOutrosStatus = pendentes.Any(p => !p.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase));
 
         if (temOutrosStatus)
         {
-            // Se houver pedidos em outras etapas, exibe o Pop-up de Escolha
             LabelTermoPesquisado.Text = $"Busca: \"{termo}\"";
             OverlayPesquisaCliente.IsVisible = true;
         }
         else
         {
-            // Se todos os pedidos pendentes já estiverem em "Aguardando Expedição", apenas filtra na tela
-            var expedicaoPedidos = pendentes.Where(p => p.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase)).ToList();
+            var expedicaoPedidos = pendentes.Where(p => !p.EmEspera && p.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase)).ToList();
             PedidosCollectionView.ItemsSource = expedicaoPedidos;
         }
     }

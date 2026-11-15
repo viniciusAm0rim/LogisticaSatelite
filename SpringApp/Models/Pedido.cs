@@ -41,8 +41,44 @@ public class Pedido
     [JsonPropertyName("expInicioData")] public DateTime? ExpInicioData { get; set; }
     [JsonPropertyName("expFimData")] public DateTime? ExpFimData { get; set; }
 
-    // Propriedade adicionada para o registo da data/hora de cancelamento
+    // Registro da data/hora de cancelamento
     [JsonPropertyName("cancelData")] public DateTime? CancelData { get; set; }
+
+    // Controle de Espera / Pausa
+    [JsonPropertyName("emEspera")] public bool EmEspera { get; set; }
+    [JsonPropertyName("etapaPausada")] public string EtapaPausada { get; set; }
+    [JsonPropertyName("pausadoPor")] public string PausadoPor { get; set; }
+    [JsonPropertyName("dataHoraPausa")] public DateTime? DataHoraPausa { get; set; }
+
+    [JsonPropertyName("historicoPausas")]
+    public List<RegistroPausa> HistoricoPausas { get; set; } = new();
+
+    [JsonIgnore]
+    public string ResumoProgressoEspera
+    {
+        get
+        {
+            if (EtapaPausada == "Separação" && Itens != null)
+            {
+                int lidos = Itens.Sum(i => i.BipagensSeparacao);
+                int total = Itens.Sum(i => i.Quantidade);
+                return $"Separados: {lidos} de {total} itens";
+            }
+            if (EtapaPausada == "Conferência" && Itens != null)
+            {
+                int lidos = Itens.Sum(i => i.BipagensConferencia);
+                int total = Itens.Sum(i => i.Quantidade);
+                return $"Conferidos: {lidos} de {total} itens";
+            }
+            if (EtapaPausada == "Expedição" && VolumesPedidos != null)
+            {
+                int lidos = VolumesPedidos.Count(v => v.BipadoExpedicao);
+                int total = VolumesPedidos.Count;
+                return $"Volumes bipados: {lidos} de {total}";
+            }
+            return "Em espera";
+        }
+    }
 
     [JsonPropertyName("volumesPedidos")]
     public List<VolumePedidoDto> VolumesPedidos { get; set; } = new();
@@ -61,6 +97,15 @@ public class Pedido
 
     [JsonPropertyName("dataHoraEstimada")]
     public string DataHoraEstimada { get; set; }
+}
+
+public class RegistroPausa
+{
+    public string Etapa { get; set; } = string.Empty;
+    public string OperadorPausa { get; set; } = string.Empty;
+    public DateTime DataHoraPausa { get; set; }
+    public string? OperadorRetomada { get; set; }
+    public DateTime? DataHoraRetomada { get; set; }
 }
 
 public class VolumePedidoDto

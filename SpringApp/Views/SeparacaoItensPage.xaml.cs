@@ -85,7 +85,6 @@ public partial class SeparacaoItensPage : ContentPage
         ClienteLabel.Text = (_pedido.Cliente ?? "").ToUpper();
         ModalLabel.Text = string.IsNullOrEmpty(_pedido.Modal) ? "PADRÃO" : _pedido.Modal.ToUpper();
 
-        // Atribui a lista uma única vez; as atualizações seguintes ocorrem via INotifyPropertyChanged sem destruir os cards
         ItensCollectionView.ItemsSource = _pedido.Itens;
         AtualizarContadores();
         GarantirFocoLeitor();
@@ -196,12 +195,36 @@ public partial class SeparacaoItensPage : ContentPage
         }
     }
 
+    private async void OnAguardarClicked(object sender, EventArgs e)
+    {
+        _bloqueioFoco = true;
+        try
+        {
+            bool confirm = await DisplayAlert("Colocar em Espera", "Deseja pausar esta separação e manter os itens já bipados salvos?", "Sim, Aguardar", "Não");
+            if (confirm)
+            {
+                var (sucesso, msg) = await _pedidoService.PausarPedidoAsync(_pedido, "Separação", _usuarioLogado, _errosEvitados);
+                if (sucesso)
+                {
+                    await Navigation.PopAsync();
+                    return;
+                }
+                await DisplayAlert("Erro", msg, "OK");
+            }
+        }
+        finally
+        {
+            _bloqueioFoco = false;
+        }
+        GarantirFocoLeitor();
+    }
+
     private async void OnCancelarClicked(object sender, EventArgs e)
     {
         _bloqueioFoco = true;
         try
         {
-            bool confirm = await DisplayAlert("Atenção", "Deseja sair?", "Sim", "Não");
+            bool confirm = await DisplayAlert("Atenção", "Deseja sair e cancelar o progresso atual?", "Sim", "Não");
             if (confirm)
             {
                 await _pedidoService.ReverterEtapaAsync(_pedido.IdPedido);

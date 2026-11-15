@@ -15,6 +15,7 @@ public class VolumeExpedicao : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
+    public int PedidoId { get; set; }
     public string CodigoEsperado { get; set; } = string.Empty;
     public string ExibicaoNome { get; set; } = string.Empty;
 
@@ -42,7 +43,6 @@ public class VolumeExpedicao : INotifyPropertyChanged
 
 public partial class ExpedicaoItensPage : ContentPage
 {
-    // Agora gerimos uma LISTA de pedidos (que pode conter 1 ou vários em caso de lote)
     private readonly List<Pedido> _pedidosLote;
     private readonly IPedidoService _pedidoService;
     private bool _isFinalizando = false;
@@ -52,11 +52,9 @@ public partial class ExpedicaoItensPage : ContentPage
 
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
-    // Construtor original (quando clica em apenas 1 pedido na lista)
     public ExpedicaoItensPage(Pedido pedido, IPedidoService pedidoService)
         : this(new List<Pedido> { pedido }, pedidoService) { }
 
-    // Novo construtor (quando escolhe expedir em lote via barra de pesquisa)
     public ExpedicaoItensPage(List<Pedido> pedidosLote, IPedidoService pedidoService)
     {
         InitializeComponent();
@@ -72,7 +70,6 @@ public partial class ExpedicaoItensPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        // Bloqueia todos os pedidos do lote no banco
         foreach (var p in _pedidosLote)
         {
             await _pedidoService.BloquearPedidoAsync(p.IdPedido, _usuarioLogado);
@@ -141,17 +138,20 @@ public partial class ExpedicaoItensPage : ContentPage
     {
         _listaVolumes.Clear();
 
-        // Puxa e aglomera os volumes de TODOS os pedidos do lote
         foreach (var p in _pedidosLote)
         {
             var pedidoAtualizado = await _pedidoService.GetPedidoPorIdAsync(p.IdPedido);
 
             if (pedidoAtualizado?.VolumesPedidos != null && pedidoAtualizado.VolumesPedidos.Any())
             {
+                // Mantém a lista do lote sincronizada com os volumes vindos do banco
+                p.VolumesPedidos = pedidoAtualizado.VolumesPedidos;
+
                 foreach (var vol in pedidoAtualizado.VolumesPedidos)
                 {
                     _listaVolumes.Add(new VolumeExpedicao
                     {
+                        PedidoId = p.IdPedido,
                         CodigoEsperado = vol.CodigoVolume,
                         ExibicaoNome = $"Pedido #{p.IdPedido} | Vol: {vol.CodigoVolume}",
                         Bipado = vol.BipadoExpedicao
@@ -215,6 +215,12 @@ public partial class ExpedicaoItensPage : ContentPage
             if (!volumeEncontrado.Bipado)
             {
                 volumeEncontrado.Bipado = true;
+
+                // Sincroniza o estado bipado no DTO do pedido em memória
+                var pedidoDono = _pedidosLote.FirstOrDefault(p => p.IdPedido == volumeEncontrado.PedidoId);
+                var dto = pedidoDono?.VolumesPedidos?.FirstOrDefault(v => v.CodigoVolume.Equals(codigo, StringComparison.OrdinalIgnoreCase));
+                if (dto != null) dto.BipadoExpedicao = true;
+
                 AtualizarContadores();
             }
             else
@@ -268,15 +274,50 @@ public partial class ExpedicaoItensPage : ContentPage
         }
     }
 
+    private async void OnAguardarClicked(object sender, EventArgs e)
+    {
+        _bloqueioFoco = true;
+        try
+        {
+            bool confirm = await DisplayAlert("Colocar em Espera", "Deseja pausar esta expedição e manter os volumes já bipados salvos?", "Sim, Aguardar", "Não");
+            if (confirm)
+            {
+                int errosParaEnviar = _errosEvitados;
+                foreach (var p in _pedidosLote)
+                {
+                    if (p.VolumesPedidos != null)
+                    {
+                        foreach (var volDto in p.VolumesPedidos)
+                        {
+                            var volLocal = _listaVolumes.FirstOrDefault(v => v.PedidoId == p.IdPedido && v.CodigoEsperado == volDto.CodigoVolume);
+                            if (volLocal != null)
+                                volDto.BipadoExpedicao = volLocal.Bipado;
+                        }
+                    }
+
+                    await _pedidoService.PausarPedidoAsync(p, "Expedição", _usuarioLogado, errosParaEnviar);
+                    errosParaEnviar = 0;
+                }
+
+                await Navigation.PopAsync();
+                return;
+            }
+        }
+        finally
+        {
+            _bloqueioFoco = false;
+        }
+        GarantirFocoLeitor();
+    }
+
     private async void OnCancelarClicked(object sender, EventArgs e)
     {
         _bloqueioFoco = true;
         try
         {
-            bool confirm = await DisplayAlert("Atenção", "Deseja sair da expedição?", "Sim", "Não");
+            bool confirm = await DisplayAlert("Atenção", "Deseja sair da expedição e cancelar o progresso atual?", "Sim", "Não");
             if (confirm)
             {
-                // Em caso de cancelamento, desfaz/reverte os status de todos do lote
                 foreach (var p in _pedidosLote)
                 {
                     await _pedidoService.ReverterEtapaAsync(p.IdPedido);
@@ -300,13 +341,12 @@ public partial class ExpedicaoItensPage : ContentPage
         bool sucessoTotal = true;
         string mensagemErro = "";
 
-        // Mantém a métrica precisa enviando os erros evitados apenas no primeiro pedido do lote
         int errosParaEnviar = _errosEvitados;
 
         foreach (var p in _pedidosLote)
         {
             var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(p.IdPedido, p.Status, _usuarioLogado, errosParaEnviar);
-            errosParaEnviar = 0; // Zera para as próximas iterações para não duplicar o contador de falhas na API
+            errosParaEnviar = 0;
 
             if (!sucesso)
             {

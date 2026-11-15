@@ -104,7 +104,7 @@
                     </CollectionView>
                 </VerticalStackLayout>
 
-                <!-- FASE 2: Bipagem de Volumes (Aparece após preencher a quantidade de caixas) -->
+                <!-- FASE 2: Bipagem de Volumes -->
                 <VerticalStackLayout x:Name="ContainerVolumes" IsVisible="False" Spacing="15">
                     <Border Stroke="#fde68a" StrokeThickness="2" BackgroundColor="#fef3c7" Padding="16">
                         <Border.StrokeShape>
@@ -140,7 +140,6 @@
                                     </Border.StrokeShape>
                                     <Grid ColumnDefinitions="*, Auto">
                                         <VerticalStackLayout Grid.Column="0" VerticalOptions="Center" Spacing="2">
-                                            <!-- Mostra se está aguardando ou o código que foi lido -->
                                             <Label Text="{Binding ExibicaoNome}" FontAttributes="Bold" FontSize="14" TextColor="#0f172a"/>
                                         </VerticalStackLayout>
                                         <Border Grid.Column="1" BackgroundColor="{Binding CorFundo}" Padding="12,6" VerticalOptions="Center">
@@ -159,8 +158,9 @@
             </VerticalStackLayout>
         </ScrollView>
 
-        <VerticalStackLayout Grid.Row="1" BackgroundColor="#f8fafc" Padding="20,10">
-            <Button Text="CANCELAR" Clicked="OnCancelarClicked" BackgroundColor="#fee2e2" TextColor="#ef4444" FontAttributes="Bold" HeightRequest="48" CornerRadius="14"/>
-        </VerticalStackLayout>
+        <Grid Grid.Row="1" ColumnDefinitions="*, *" ColumnSpacing="12" BackgroundColor="#f8fafc" Padding="20,10">
+            <Button Grid.Column="0" Text="CANCELAR" Clicked="OnCancelarClicked" BackgroundColor="#fee2e2" TextColor="#ef4444" FontAttributes="Bold" HeightRequest="48" CornerRadius="14"/>
+            <Button Grid.Column="1" Text="AGUARDAR" Clicked="OnAguardarClicked" BackgroundColor="#fef3c7" TextColor="#b45309" FontAttributes="Bold" HeightRequest="48" CornerRadius="14"/>
+        </Grid>
     </Grid>
 </ContentPage>

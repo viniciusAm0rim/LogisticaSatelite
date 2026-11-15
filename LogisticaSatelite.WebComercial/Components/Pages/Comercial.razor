@@ -1,0 +1,273 @@
+﻿@page "/comercial"
+@implements IDisposable
+@inject IPedidosService PedidosService
+@inject SessaoStateService Sessao
+@inject NavigationManager Navigation
+
+<PageTitle>Comercial — Logística Satélite</PageTitle>
+
+<div class="container-xl py-4">
+    <header class="topbar-card">
+        <div>
+            <h1 class="page-title mb-0">Painel Comercial</h1>
+            <p class="page-subtitle mb-0">Acompanhamento de pedidos e solicitação de estimativa de entrega</p>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            <span class="user-label">Usuário: <strong>@Sessao.NomeUsuario</strong></span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="Sair">
+                Sair
+            </button>
+        </div>
+    </header>
+
+    <section class="panel-card">
+        <div class="row g-3 align-items-end mb-4">
+            <div class="col-md-5 col-lg-4">
+                <label class="form-label" for="filtroId">Pesquisar por ID do Pedido</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white">
+                        <i class="bi bi-search text-muted"></i>
+                    </span>
+                    <input id="filtroId"
+                           type="text"
+                           class="form-control border-start-0"
+                           placeholder="Ex: 1024"
+                           @bind="termoBuscaId"
+                           @bind:event="oninput" />
+                    @if (!string.IsNullOrWhiteSpace(termoBuscaId))
+                    {
+                        <button type="button" class="btn btn-outline-secondary" @onclick="LimparBusca">
+                            Limpar
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="col-md-7 col-lg-8 d-flex justify-content-md-end align-items-center gap-2">
+                <span class="text-muted small">
+                    Exibindo <strong>@PedidosFiltrados.Count()</strong> de <strong>@pedidos.Count</strong> pedidos
+                </span>
+                @if (!Sessao.UsarMock)
+                {
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm ms-2"
+                            disabled="@carregando"
+                            @onclick="CarregarPedidosAsync">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (carregando)
+        {
+            <div class="state-box">
+                <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                <span>Carregando pedidos...</span>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(erroConexao))
+        {
+            <div class="state-box state-error">
+                <p class="fw-semibold mb-1">Erro de conexão</p>
+                <p class="small mb-3">@erroConexao</p>
+                <button type="button" class="btn btn-primary-custom btn-sm" @onclick="CarregarPedidosAsync">
+                    Tentar novamente
+                </button>
+            </div>
+        }
+        else if (!PedidosFiltrados.Any())
+        {
+            <div class="state-box">
+                <p class="fw-semibold mb-1">Nenhum pedido encontrado</p>
+                <p class="text-muted small mb-0">
+                    @(string.IsNullOrWhiteSpace(termoBuscaId)
+                        ? "Não há pedidos registrados no momento."
+                        : $"Nenhum pedido corresponde ao ID \"{termoBuscaId}\".")
+                </p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 110px;">ID Pedido</th>
+                            <th>Cliente</th>
+                            <th style="width: 240px;">Modal</th>
+                            <th style="width: 210px;">Status Atual</th>
+                            <th class="text-end" style="width: 210px;">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pedido in PedidosFiltrados)
+                        {
+                            bool emEnvio = pedidosEmEnvio.Contains(pedido.Id);
+                            bool jaSolicitada = pedido.EstimativaSolicitada;
+
+                            <tr>
+                                <td class="fw-semibold tabular-nums">#@pedido.Id</td>
+                                <td>@pedido.NomeCliente</td>
+                                <td class="text-secondary">@pedido.Modal</td>
+                                <td>
+                                    <span class="status-pill @ObterClasseStatus(pedido.Status)">
+                                        @pedido.Status
+                                    </span>
+                                    @if (!string.IsNullOrWhiteSpace(pedido.DataHoraEstimada))
+                                    {
+                                        <div class="small text-muted mt-1">
+                                            Previsão: @pedido.DataHoraEstimada
+                                        </div>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <button type="button"
+                                            class="btn btn-estimativa @(jaSolicitada ? "btn-estimativa-solicitada" : "")"
+                                            disabled="@(jaSolicitada || emEnvio)"
+                                            @onclick="() => SolicitarEstimativa(pedido)">
+                                        @if (emEnvio)
+                                        {
+                                            <span>Enviando...</span>
+                                        }
+                                        else if (jaSolicitada)
+                                        {
+                                            <span>Estimativa solicitada</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Solicitar estimativa</span>
+                                        }
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<PedidoDto> pedidos = new();
+    private readonly HashSet<int> pedidosEmEnvio = new();
+    private string termoBuscaId = string.Empty;
+    private bool carregando = true;
+    private string? erroConexao;
+
+    private CancellationTokenSource? pollingCts;
+
+    private IEnumerable<PedidoDto> PedidosFiltrados
+    {
+        get
+        {
+            var ordenados = pedidos.OrderByDescending(p => p.Id);
+
+            if (string.IsNullOrWhiteSpace(termoBuscaId))
+                return ordenados;
+
+            var busca = termoBuscaId.Trim().TrimStart('#');
+            return ordenados.Where(p => p.Id.ToString().Contains(busca, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Sessao.Autenticado || Sessao.Perfil != PerfilAcesso.Comercial)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        await CarregarPedidosAsync();
+
+        if (!Sessao.UsarMock)
+        {
+            IniciarPollingProducao();
+        }
+    }
+
+    private async Task CarregarPedidosAsync()
+    {
+        carregando = true;
+        erroConexao = null;
+
+        var resultado = await PedidosService.ObterPedidosAsync();
+
+        if (resultado.Sucesso)
+        {
+            pedidos = resultado.Pedidos;
+        }
+        else
+        {
+            erroConexao = resultado.MensagemErro;
+        }
+
+        carregando = false;
+    }
+
+    private void IniciarPollingProducao()
+    {
+        pollingCts = new CancellationTokenSource();
+        var token = pollingCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                var resultado = await PedidosService.ObterPedidosAsync();
+                if (resultado.Sucesso)
+                {
+                    pedidos = resultado.Pedidos;
+                    erroConexao = null;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }, token);
+    }
+
+    private async Task SolicitarEstimativa(PedidoDto pedido)
+    {
+        if (pedido.EstimativaSolicitada || pedidosEmEnvio.Contains(pedido.Id))
+            return;
+
+        pedidosEmEnvio.Add(pedido.Id);
+
+        var ok = await PedidosService.SolicitarEstimativaAsync(pedido.Id);
+        if (ok)
+        {
+            pedido.EstimativaSolicitada = true;
+        }
+
+        pedidosEmEnvio.Remove(pedido.Id);
+    }
+
+    private void LimparBusca()
+    {
+        termoBuscaId = string.Empty;
+    }
+
+    private void Sair()
+    {
+        Sessao.EncerrarSessao();
+        Navigation.NavigateTo("/login");
+    }
+
+    private static string ObterClasseStatus(string status)
+    {
+        if (status.Equals("Expedido", StringComparison.OrdinalIgnoreCase))
+            return "pill-success";
+        if (status.Contains("Aguardando", StringComparison.OrdinalIgnoreCase))
+            return "pill-neutral";
+        return "pill-active";
+    }
+
+    public void Dispose()
+    {
+        pollingCts?.Cancel();
+        pollingCts?.Dispose();
+    }
+}

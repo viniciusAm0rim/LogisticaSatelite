@@ -10,10 +10,11 @@ namespace LogisticaSatelite.Api.Data
         public DbSet<Pedido> Pedidos { get; set; } = null!;
         public DbSet<ItemPedido> ItensPedidos { get; set; } = null!;
         public DbSet<Usuario> Usuarios { get; set; } = null!;
-        public DbSet<Produto> Produtos { get; set; } = null!; // <--- Adicionado aqui
-        public DbSet<Cliente> Clientes { get; set; } = null!; // <-- Adicionar
-        public DbSet<Transportadora> Transportadoras { get; set; } = null!; // <-- Adicionar
-        public DbSet<VolumePedido> VolumesPedidos { get; set; }
+        public DbSet<Produto> Produtos { get; set; } = null!;
+        public DbSet<Cliente> Clientes { get; set; } = null!;
+        public DbSet<Transportadora> Transportadoras { get; set; } = null!;
+        public DbSet<VolumePedido> VolumesPedidos { get; set; } = null!;
         public DbSet<LogOperacional> LogsOperacionais { get; set; } = null!;
+        public DbSet<RegistroPausa> RegistrosPausas { get; set; } = null!;
     }
 }

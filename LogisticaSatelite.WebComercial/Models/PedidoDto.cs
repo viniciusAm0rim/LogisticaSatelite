@@ -4,14 +4,14 @@ namespace LogisticaSatelite.WebComercial.Models;
 
 public class PedidoDto
 {
+    [JsonPropertyName("id")]
     public int Id { get; set; }
 
     [JsonPropertyName("destinatario")]
     public string Destinatario { get; set; } = string.Empty;
 
-    // Propriedade de atalho para exibição na tabela
     [JsonIgnore]
-    public string NomeCliente => Destinatario;
+    public string NomeCliente => string.IsNullOrWhiteSpace(Destinatario) ? "Cliente não informado" : Destinatario;
 
     [JsonPropertyName("modal")]
     public string Modal { get; set; } = string.Empty;
@@ -27,4 +27,67 @@ public class PedidoDto
 
     [JsonPropertyName("dataHoraEstimada")]
     public string? DataHoraEstimada { get; set; }
+
+    [JsonPropertyName("emEspera")]
+    public bool EmEspera { get; set; }
+
+    [JsonPropertyName("etapaPausada")]
+    public string? EtapaPausada { get; set; }
+
+    [JsonPropertyName("errosEvitados")]
+    public int ErrosEvitados { get; set; }
+
+    [JsonPropertyName("erros")]
+    public int ErrosRegistrados { get; set; }
+
+    [JsonPropertyName("sepUser")]
+    public string? SepUser { get; set; }
+
+    [JsonPropertyName("sepInicioData")]
+    public DateTime? SepInicioData { get; set; }
+
+    [JsonPropertyName("sepFimData")]
+    public DateTime? SepFimData { get; set; }
+
+    [JsonPropertyName("confUser")]
+    public string? ConfUser { get; set; }
+
+    [JsonPropertyName("confInicioData")]
+    public DateTime? ConfInicioData { get; set; }
+
+    [JsonPropertyName("confFimData")]
+    public DateTime? ConfFimData { get; set; }
+
+    [JsonPropertyName("expUser")]
+    public string? ExpUser { get; set; }
+
+    [JsonPropertyName("expInicioData")]
+    public DateTime? ExpInicioData { get; set; }
+
+    [JsonPropertyName("expFimData")]
+    public DateTime? ExpFimData { get; set; }
+
+    [JsonPropertyName("historicoPausas")]
+    public List<RegistroPausaDto> HistoricoPausas { get; set; } = new();
+}
+
+public class RegistroPausaDto
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("etapa")]
+    public string Etapa { get; set; } = string.Empty;
+
+    [JsonPropertyName("operadorPausa")]
+    public string OperadorPausa { get; set; } = string.Empty;
+
+    [JsonPropertyName("dataHoraPausa")]
+    public DateTime DataHoraPausa { get; set; }
+
+    [JsonPropertyName("operadorRetomada")]
+    public string? OperadorRetomada { get; set; }
+
+    [JsonPropertyName("dataHoraRetomada")]
+    public DateTime? DataHoraRetomada { get; set; }
 }

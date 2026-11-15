@@ -1,0 +1,361 @@
+﻿@page "/adm"
+@using System.Globalization
+@inject IAdmService AdmService
+@inject SessaoStateService Sessao
+@inject NavigationManager Navigation
+
+<PageTitle>Administração — Logística Satélite</PageTitle>
+
+<div class="container-xl py-4">
+    <header class="topbar-card">
+        <div>
+            <h1 class="page-title mb-0">Painel Administrativo</h1>
+            <p class="page-subtitle mb-0">Indicadores operacionais, acurácia de conferência e desempenho por operador</p>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            <span class="user-label">Usuário: <strong>@Sessao.NomeUsuario</strong></span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="Sair">
+                Sair
+            </button>
+        </div>
+    </header>
+
+    @if (carregando)
+    {
+        <div class="panel-card state-box">
+            <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+            <span>Carregando indicadores administrativos...</span>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(erroConexao))
+    {
+        <div class="panel-card state-box state-error">
+            <p class="fw-semibold mb-1">Erro de conexão</p>
+            <p class="small mb-3">@erroConexao</p>
+            <button type="button" class="btn btn-primary-custom btn-sm" @onclick="() => CarregarDashboardAsync(funcionarioSelecionado)">
+                Tentar novamente
+            </button>
+        </div>
+    }
+    else if (dados == null || dados.PedidosRecebidos == 0)
+    {
+        <div class="panel-card state-box">
+            <p class="fw-semibold mb-1">Sem dados operacionais</p>
+            <p class="text-muted small mb-0">Não existem registros de pedidos para o escopo selecionado.</p>
+        </div>
+    }
+    else
+    {
+        <!-- Card Seletor de Escopo (Todos ou Funcionário Específico) -->
+        <section class="panel-card mb-4">
+            <div class="row g-3 align-items-center">
+                <div class="col-md-7">
+                    <h2 class="section-heading mb-1">Escopo de Análise</h2>
+                    <p class="text-muted small mb-0">
+                        Selecione um operador para filtrar todos os indicadores e gráficos ou visualize a operação completa.
+                    </p>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label" for="selectFuncionario">Operador / Escopo</label>
+                    <select id="selectFuncionario"
+                            class="form-select"
+                            value="@funcionarioSelecionado"
+                            @onchange="AoAlterarFuncionario">
+                        <option value="Todos">Todos os funcionários</option>
+                        @foreach (var func in dados.FuncionariosDisponiveis)
+                        {
+                            <option value="@func">@func</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6 Cards de Indicadores -->
+        <section class="row g-3 mb-4">
+            <div class="col-sm-6 col-lg-4">
+                <div class="kpi-card">
+                    <span class="kpi-label">Pedidos Recebidos</span>
+                    <div class="kpi-value tabular-nums">@dados.PedidosRecebidos</div>
+                    <span class="kpi-meta">Escopo: @dados.EscopoSelecionado</span>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-4">
+                <div class="kpi-card">
+                    <span class="kpi-label">Pedidos Enviados</span>
+                    <div class="kpi-value tabular-nums">@dados.PedidosEnviados</div>
+                    <span class="kpi-meta">
+                        @(dados.PedidosRecebidos > 0
+                            ? $"{Math.Round((double)dados.PedidosEnviados / dados.PedidosRecebidos * 100, 1):N1}% concluídos"
+                            : "0% concluídos")
+                    </span>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-4">
+                <div class="kpi-card">
+                    <span class="kpi-label">Tempo Médio por Pedido</span>
+                    <div class="kpi-value tabular-nums">@FormatarMinutos(dados.TempoMedioPorPedidoMin)</div>
+                    <span class="kpi-meta">Tempo líquido ativo (sem pausas)</span>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-4">
+                <div class="kpi-card">
+                    <span class="kpi-label">Erros Evitados</span>
+                    <div class="kpi-value tabular-nums">@dados.ErrosEvitados</div>
+                    <span class="kpi-meta">Bloqueios preventivos na bipagem</span>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-4">
+                <div class="kpi-card">
+                    <span class="kpi-label">Acurácia de Tempo (Conferência)</span>
+                    <div class="kpi-value tabular-nums">@($"{dados.AcuraciaConferenciaPercentual:N1}%")</div>
+                    <span class="kpi-meta">@dados.ConferenciasNoPrazo de @dados.ConferenciasTotais conferências no prazo</span>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-4">
+                <div class="kpi-card">
+                    <span class="kpi-label">Pausas e Tempo Total Pausado</span>
+                    <div class="kpi-value tabular-nums">@dados.QuantidadePausas <small class="fs-6 fw-normal text-muted">pausas</small></div>
+                    <span class="kpi-meta">Tempo acumulado: @FormatarMinutos(dados.TempoTotalPausadoMin)</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Gráficos -->
+        <section class="row g-4">
+            <!-- Gráfico 1: Barras - Etapas finalizadas por funcionário -->
+            <div class="col-lg-12">
+                <div class="panel-card">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <div>
+                            <h2 class="section-heading mb-1">Etapas Finalizadas por Funcionário</h2>
+                            <p class="text-muted small mb-0">Distribuição de separações, conferências e expedições concluídas</p>
+                        </div>
+                        <div class="d-flex flex-wrap gap-3 small">
+                            <span class="legend-item"><i class="legend-dot dot-sep"></i>Separação</span>
+                            <span class="legend-item"><i class="legend-dot dot-conf"></i>Conferência</span>
+                            <span class="legend-item"><i class="legend-dot dot-exp"></i>Expedição</span>
+                        </div>
+                    </div>
+
+                    @if (!dados.EtapasPorFuncionario.Any())
+                    {
+                        <p class="text-muted small mb-0">Nenhuma etapa concluída registrada.</p>
+                    }
+                    else
+                    {
+                        int maxEtapas = Math.Max(1, dados.EtapasPorFuncionario.Max(e => e.TotalEtapas));
+
+                        <div class="bar-chart-list">
+                            @foreach (var item in dados.EtapasPorFuncionario)
+                            {
+                                double pctSep = (double)item.SeparacoesFinalizadas / maxEtapas * 100.0;
+                                double pctConf = (double)item.ConferenciasFinalizadas / maxEtapas * 100.0;
+                                double pctExp = (double)item.ExpedicoesFinalizadas / maxEtapas * 100.0;
+
+                                <div class="bar-row">
+                                    <div class="bar-row-header">
+                                        <span class="fw-semibold">@item.NomeFuncionario</span>
+                                        <span class="small text-muted tabular-nums">
+                                            Sep: @item.SeparacoesFinalizadas | Conf: @item.ConferenciasFinalizadas | Exp: @item.ExpedicoesFinalizadas
+                                            <strong class="text-dark ms-2">Total: @item.TotalEtapas</strong>
+                                        </span>
+                                    </div>
+                                    <div class="stacked-bar-track">
+                                        @if (item.SeparacoesFinalizadas > 0)
+                                        {
+                                            <div class="stacked-segment seg-sep"
+                                                 style="width: @pctSep.ToString("F2", CultureInfo.InvariantCulture)%"
+                                                 title="Separação: @item.SeparacoesFinalizadas"></div>
+                                        }
+                                        @if (item.ConferenciasFinalizadas > 0)
+                                        {
+                                            <div class="stacked-segment seg-conf"
+                                                 style="width: @pctConf.ToString("F2", CultureInfo.InvariantCulture)%"
+                                                 title="Conferência: @item.ConferenciasFinalizadas"></div>
+                                        }
+                                        @if (item.ExpedicoesFinalizadas > 0)
+                                        {
+                                            <div class="stacked-segment seg-exp"
+                                                 style="width: @pctExp.ToString("F2", CultureInfo.InvariantCulture)%"
+                                                 title="Expedição: @item.ExpedicoesFinalizadas"></div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Gráfico 2: Pizza - Erros em relação ao limite máximo (10) -->
+            <div class="col-lg-6">
+                <div class="panel-card h-100">
+                    <h2 class="section-heading mb-1">Erros em Relação ao Limite Máximo (10)</h2>
+                    <p class="text-muted small mb-4">Monitoramento de ocorrências frente ao teto operacional permitido</p>
+
+                    @{
+                        int erros = Math.Min(dados.ErrosTotais, dados.LimiteMaximoErros);
+                        int margem = Math.Max(0, dados.LimiteMaximoErros - erros);
+                        double pctErro = (double)erros / dados.LimiteMaximoErros * 100.0;
+                        string corFatiaErro = erros >= 8 ? "#b91c1c" : (erros >= 5 ? "#b45309" : "#1d4ed8");
+                    }
+
+                    <div class="pie-layout">
+                        <div class="pie-chart"
+                             style="background: conic-gradient(@corFatiaErro 0% @pctErro.ToString("F1", CultureInfo.InvariantCulture)%, #e2e8f0 @pctErro.ToString("F1", CultureInfo.InvariantCulture)% 100%);">
+                            <div class="pie-center">
+                                <span class="pie-center-main tabular-nums">@dados.ErrosTotais / @dados.LimiteMaximoErros</span>
+                                <span class="pie-center-sub">erros</span>
+                            </div>
+                        </div>
+
+                        <div class="pie-details">
+                            <div class="detail-line">
+                                <span class="legend-item">
+                                    <i class="legend-dot" style="background-color: @corFatiaErro;"></i>
+                                    Erros registrados
+                                </span>
+                                <strong class="tabular-nums">@dados.ErrosTotais (@($"{pctErro:N0}%"))</strong>
+                            </div>
+                            <div class="detail-line">
+                                <span class="legend-item">
+                                    <i class="legend-dot" style="background-color: #e2e8f0;"></i>
+                                    Margem disponível até o limite
+                                </span>
+                                <strong class="tabular-nums">@margem</strong>
+                            </div>
+                            <div class="mt-3 pt-2 border-top small text-muted">
+                                Limite máximo estabelecido: <strong>10 ocorrências</strong> no escopo avaliado.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gráfico 3: Acurácia de Pedidos (Meta 98% vs Acurácia Total) -->
+            <div class="col-lg-6">
+                <div class="panel-card h-100">
+                    <h2 class="section-heading mb-1">Acurácia de Pedidos vs. Meta (98%)</h2>
+                    <p class="text-muted small mb-4">Comparativo de entregas finalizadas dentro e fora do prazo operacional</p>
+
+                    @{
+                        bool atingiuMeta = dados.AcuraciaTotalPedidosPercentual >= dados.MetaAcuraciaPercentual;
+                        int totalAvaliados = dados.PedidosFinalizadosNoPrazo + dados.PedidosFinalizadosForaPrazo;
+                    }
+
+                    <div class="accuracy-bars mb-4">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span class="fw-semibold">Meta Operacional</span>
+                                <span class="fw-semibold tabular-nums">@($"{dados.MetaAcuraciaPercentual:N1}%")</span>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill fill-target"
+                                     style="width: @dados.MetaAcuraciaPercentual.ToString("F1", CultureInfo.InvariantCulture)%"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span class="fw-semibold">Acurácia Total Alcançada</span>
+                                <span class="fw-semibold tabular-nums @(atingiuMeta ? "text-success" : "text-danger")">
+                                    @($"{dados.AcuraciaTotalPedidosPercentual:N1}%")
+                                </span>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill @(atingiuMeta ? "fill-ok" : "fill-warn")"
+                                     style="width: @dados.AcuraciaTotalPedidosPercentual.ToString("F1", CultureInfo.InvariantCulture)%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-2 pt-2 border-top">
+                        <div class="col-6">
+                            <div class="mini-stat">
+                                <span class="mini-stat-label">Finalizados no prazo</span>
+                                <span class="mini-stat-value text-success tabular-nums">@dados.PedidosFinalizadosNoPrazo</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="mini-stat">
+                                <span class="mini-stat-label">Finalizados fora do prazo</span>
+                                <span class="mini-stat-value text-danger tabular-nums">@dados.PedidosFinalizadosForaPrazo</span>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <span class="small text-muted">
+                                Base de cálculo: <strong>@totalAvaliados</strong> pedidos expedidos no escopo.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private AdmDashboardDto? dados;
+    private string funcionarioSelecionado = "Todos";
+    private bool carregando = true;
+    private string? erroConexao;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Sessao.Autenticado || Sessao.Perfil != PerfilAcesso.Adm)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        await CarregarDashboardAsync("Todos");
+    }
+
+    private async Task AoAlterarFuncionario(ChangeEventArgs e)
+    {
+        funcionarioSelecionado = e.Value?.ToString() ?? "Todos";
+        await CarregarDashboardAsync(funcionarioSelecionado);
+    }
+
+    private async Task CarregarDashboardAsync(string funcionario)
+    {
+        carregando = true;
+        erroConexao = null;
+
+        var resultado = await AdmService.ObterDashboardAsync(funcionario);
+
+        if (resultado.Sucesso)
+        {
+            dados = resultado.Dados;
+        }
+        else
+        {
+            erroConexao = resultado.MensagemErro;
+        }
+
+        carregando = false;
+    }
+
+    private void Sair()
+    {
+        Sessao.EncerrarSessao();
+        Navigation.NavigateTo("/login");
+    }
+
+    private static string FormatarMinutos(double minutos)
+    {
+        if (minutos < 60)
+            return $"{minutos:N1} min";
+
+        int horas = (int)(minutos / 60);
+        int minsRestantes = (int)Math.Round(minutos % 60);
+        return $"{horas}h {minsRestantes:D2}min";
+    }
+}

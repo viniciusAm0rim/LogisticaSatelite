@@ -44,6 +44,7 @@ namespace LogisticaSatelite.Api.Controllers
                 .Include(p => p.Itens)
                     .ThenInclude(i => i.Produto)
                 .Include(p => p.VolumesPedidos)
+                .Include(p => p.HistoricoPausas)
                 .AsQueryable();
 
             if (!string.IsNullOrEmpty(status))
@@ -65,6 +66,7 @@ namespace LogisticaSatelite.Api.Controllers
                 .Include(p => p.Itens)
                     .ThenInclude(i => i.Produto)
                 .Include(p => p.VolumesPedidos)
+                .Include(p => p.HistoricoPausas)
                 .FirstOrDefaultAsync(p => p.Id == Id);
 
             if (pedido == null) return NotFound(new { message = $"Pedido #{Id} não encontrado." });
@@ -166,7 +168,11 @@ namespace LogisticaSatelite.Api.Controllers
                 throw new ExceptionTemplate("O pedido não está disponível para separação.");
 
             pedido.Status = "Em Separação";
-            pedido.SepInicioData = DateTime.Now;
+            pedido.SepInicioData ??= DateTime.Now;
+            pedido.EmEspera = false;
+            pedido.EtapaPausada = null;
+            pedido.PausadoPor = null;
+            pedido.DataHoraPausa = null;
 
             if (!string.IsNullOrEmpty(dto.Usuario)) pedido.LockedBy = dto.Usuario;
 
@@ -180,7 +186,7 @@ namespace LogisticaSatelite.Api.Controllers
             var pedido = await _context.Pedidos.FindAsync(id);
             if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
-            if (pedido.Status != "Em Separação")
+            if (pedido.Status != "Em Separação" && pedido.Status != "Em Separacao")
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
             pedido.Status = "Aguardando Conferencia";
@@ -188,6 +194,10 @@ namespace LogisticaSatelite.Api.Controllers
             pedido.SepFimData = DateTime.Now;
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
+            pedido.EmEspera = false;
+            pedido.EtapaPausada = null;
+            pedido.PausadoPor = null;
+            pedido.DataHoraPausa = null;
 
             await _context.SaveChangesAsync();
             return Ok(pedido);
@@ -203,7 +213,11 @@ namespace LogisticaSatelite.Api.Controllers
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
             pedido.Status = "Em Conferencia";
-            pedido.ConfInicioData = DateTime.Now;
+            pedido.ConfInicioData ??= DateTime.Now;
+            pedido.EmEspera = false;
+            pedido.EtapaPausada = null;
+            pedido.PausadoPor = null;
+            pedido.DataHoraPausa = null;
 
             if (!string.IsNullOrEmpty(dto.Usuario)) pedido.LockedBy = dto.Usuario;
 
@@ -224,12 +238,16 @@ namespace LogisticaSatelite.Api.Controllers
             if (pedido.Status != "Em Conferencia")
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
-            pedido.Status = "Aguardando Expediçao";
+            pedido.Status = "Aguardando Expedição";
             pedido.Volumes = dto.Volumes;
             pedido.ConfUser = dto.Usuario;
             pedido.ConfFimData = DateTime.Now;
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
+            pedido.EmEspera = false;
+            pedido.EtapaPausada = null;
+            pedido.PausadoPor = null;
+            pedido.DataHoraPausa = null;
 
             _context.VolumesPedidos.RemoveRange(pedido.VolumesPedidos);
             pedido.VolumesPedidos.Clear();
@@ -268,14 +286,128 @@ namespace LogisticaSatelite.Api.Controllers
             var pedido = await _context.Pedidos.FindAsync(id);
             if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
-            if (pedido.Status != "Aguardando Expediçao")
+            if (pedido.Status != "Aguardando Expedição" && pedido.Status != "Aguardando Expedicao")
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
             pedido.Status = "Expedido";
             pedido.ExpUser = dto.Usuario;
+            pedido.ExpInicioData ??= DateTime.Now;
             pedido.ExpFimData = DateTime.Now;
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
+            pedido.EmEspera = false;
+            pedido.EtapaPausada = null;
+            pedido.PausadoPor = null;
+            pedido.DataHoraPausa = null;
+
+            await _context.SaveChangesAsync();
+            return Ok(pedido);
+        }
+
+        // ==========================================
+        // COLOCAR PEDIDO EM ESPERA (PAUSA)
+        // ==========================================
+        [HttpPatch("{id}/pausar")]
+        public async Task<ActionResult<Pedido>> PausarPedido(int id, [FromBody] PausarPedidoDTO dto)
+        {
+            var pedido = await _context.Pedidos
+                .Include(p => p.Itens)
+                .Include(p => p.VolumesPedidos)
+                .Include(p => p.HistoricoPausas)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
+
+            DateTime agora = DateTime.Now;
+            string usuarioAtual = string.IsNullOrWhiteSpace(dto.Usuario) ? "Operador" : dto.Usuario;
+
+            pedido.EmEspera = true;
+            pedido.EtapaPausada = dto.Etapa;
+            pedido.PausadoPor = usuarioAtual;
+            pedido.DataHoraPausa = agora;
+            pedido.LockedBy = null;
+            pedido.ErrosEvitados += dto.ErrosEvitados;
+
+            if ((dto.Etapa == "Expedição" || dto.Etapa == "Expedicao") && pedido.ExpInicioData == null)
+            {
+                pedido.ExpInicioData = agora;
+                pedido.ExpUser = usuarioAtual;
+            }
+
+            // Salva as bipagens parciais dos itens (Separação e Conferência)
+            if (dto.Itens != null && dto.Itens.Any())
+            {
+                foreach (var itemDto in dto.Itens)
+                {
+                    var itemDb = pedido.Itens.FirstOrDefault(i =>
+                        (itemDto.Id > 0 && i.Id == itemDto.Id) ||
+                        (!string.IsNullOrEmpty(itemDto.CodItem) && i.CodItem == itemDto.CodItem));
+
+                    if (itemDb != null)
+                    {
+                        itemDb.ScansSep = itemDto.ScansSep;
+                        itemDb.ScansConf = itemDto.ScansConf;
+                    }
+                }
+            }
+
+            // Salva as bipagens parciais dos volumes (Expedição)
+            if (dto.VolumesPedidos != null && dto.VolumesPedidos.Any())
+            {
+                foreach (var volDto in dto.VolumesPedidos)
+                {
+                    var volDb = pedido.VolumesPedidos.FirstOrDefault(v =>
+                        (volDto.Id > 0 && v.Id == volDto.Id) ||
+                        (!string.IsNullOrEmpty(volDto.CodigoVolume) && v.CodigoVolume == volDto.CodigoVolume));
+
+                    if (volDb != null)
+                    {
+                        volDb.BipadoExpedicao = volDto.BipadoExpedicao;
+                    }
+                }
+            }
+
+            pedido.HistoricoPausas.Add(new RegistroPausa
+            {
+                PedidoId = pedido.Id,
+                Etapa = dto.Etapa,
+                OperadorPausa = usuarioAtual,
+                DataHoraPausa = agora
+            });
+
+            await _context.SaveChangesAsync();
+            return Ok(pedido);
+        }
+
+        // ==========================================
+        // RETOMAR PEDIDO EM ESPERA
+        // ==========================================
+        [HttpPatch("{id}/retomar")]
+        public async Task<ActionResult<Pedido>> RetomarPedido(int id, [FromBody] EtapaRequestDTO dto)
+        {
+            var pedido = await _context.Pedidos
+                .Include(p => p.HistoricoPausas)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
+
+            DateTime agora = DateTime.Now;
+            string usuarioAtual = string.IsNullOrWhiteSpace(dto.Usuario) ? "Operador" : dto.Usuario;
+
+            var pausaAberta = pedido.HistoricoPausas
+                .OrderByDescending(h => h.Id)
+                .FirstOrDefault(h => h.DataHoraRetomada == null);
+
+            if (pausaAberta != null)
+            {
+                pausaAberta.OperadorRetomada = usuarioAtual;
+                pausaAberta.DataHoraRetomada = agora;
+            }
+
+            pedido.EmEspera = false;
+            pedido.PausadoPor = null;
+            pedido.DataHoraPausa = null;
+            pedido.LockedBy = usuarioAtual;
 
             await _context.SaveChangesAsync();
             return Ok(pedido);
@@ -287,11 +419,27 @@ namespace LogisticaSatelite.Api.Controllers
             var pedido = await _context.Pedidos
                 .Include(p => p.Itens)
                 .Include(p => p.VolumesPedidos)
+                .Include(p => p.HistoricoPausas)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
-            if (pedido.Status == "Em Separação")
+            var pausaAberta = pedido.HistoricoPausas
+                .OrderByDescending(h => h.Id)
+                .FirstOrDefault(h => h.DataHoraRetomada == null);
+
+            if (pausaAberta != null)
+            {
+                pausaAberta.OperadorRetomada = "Cancelado";
+                pausaAberta.DataHoraRetomada = DateTime.Now;
+            }
+
+            pedido.EmEspera = false;
+            pedido.EtapaPausada = null;
+            pedido.PausadoPor = null;
+            pedido.DataHoraPausa = null;
+
+            if (pedido.Status == "Em Separação" || pedido.Status == "Em Separacao")
             {
                 pedido.Status = "Aguardando";
                 pedido.SepInicioData = null;
@@ -311,9 +459,9 @@ namespace LogisticaSatelite.Api.Controllers
                     item.ScansConf = 0;
                 }
             }
-            else if (pedido.Status == "Em Expediçao")
+            else if (pedido.Status == "Em Expedição" || pedido.Status == "Aguardando Expedição" || pedido.Status == "Aguardando Expedicao")
             {
-                pedido.Status = "Aguardando Expediçao";
+                pedido.Status = "Aguardando Expedição";
                 pedido.LockedBy = null;
                 foreach (var volume in pedido.VolumesPedidos)
                 {
@@ -335,8 +483,6 @@ namespace LogisticaSatelite.Api.Controllers
         [HttpPatch("/api/Pedido/{id}/solicitar-estimativa")]
         public async Task<IActionResult> SolicitarEstimativa(int id)
         {
-            Console.WriteLine($"[API] Solicitação de estimativa recebida para o Pedido ID: {id}");
-
             var pedido = await _context.Pedidos.FindAsync(id);
             if (pedido == null)
             {
@@ -345,8 +491,8 @@ namespace LogisticaSatelite.Api.Controllers
 
             pedido.EstimativaSolicitada = true;
             pedido.SolicitanteEstimativa = "Comercial";
-
             await _context.SaveChangesAsync();
+
             return Ok(pedido);
         }
 
@@ -386,8 +532,6 @@ namespace LogisticaSatelite.Api.Controllers
                     ? dtoBody.DataHora
                     : dtoBody?.DataHoraEstimadaString ?? string.Empty);
 
-            Console.WriteLine($"[API] Resposta de estimativa recebida para Pedido ID: {pedidoIdFinal} | Valor: '{dataEstimada}'");
-
             if (pedidoIdFinal <= 0)
             {
                 return BadRequest(new { message = "O ID do pedido não foi fornecido na URL nem no corpo da requisição." });
@@ -405,11 +549,9 @@ namespace LogisticaSatelite.Api.Controllers
             }
 
             pedido.DataHoraEstimada = dataEstimada;
-            pedido.EstimativaSolicitada = false; // Conclui o ciclo de solicitação
-
+            pedido.EstimativaSolicitada = false;
             await _context.SaveChangesAsync();
 
-            Console.WriteLine($"[API] Estimativa gravada com sucesso para o Pedido #{pedidoIdFinal}!");
             return Ok(pedido);
         }
     }
@@ -422,6 +564,30 @@ namespace LogisticaSatelite.Api.Controllers
         public string? Usuario { get; set; }
         public int Volumes { get; set; }
         public int ErrosEvitados { get; set; }
+    }
+
+    public class PausarPedidoDTO
+    {
+        public string Etapa { get; set; } = string.Empty;
+        public string? Usuario { get; set; }
+        public int ErrosEvitados { get; set; }
+        public List<ItemProgressoDTO>? Itens { get; set; }
+        public List<VolumeProgressoDTO>? VolumesPedidos { get; set; }
+    }
+
+    public class ItemProgressoDTO
+    {
+        public int Id { get; set; }
+        public string CodItem { get; set; } = string.Empty;
+        public int ScansSep { get; set; }
+        public int ScansConf { get; set; }
+    }
+
+    public class VolumeProgressoDTO
+    {
+        public int Id { get; set; }
+        public string CodigoVolume { get; set; } = string.Empty;
+        public bool BipadoExpedicao { get; set; }
     }
 
     public class CriarPedidoSimplificadoDTO

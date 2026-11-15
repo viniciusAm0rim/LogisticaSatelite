@@ -48,7 +48,9 @@ public class PedidoService : IPedidoService
         try
         {
             var pedidos = await GetPedidosAsync();
-            return pedidos.Where(p => string.Equals(p.Status, status, StringComparison.OrdinalIgnoreCase)).ToList();
+            return pedidos
+                .Where(p => !p.EmEspera && string.Equals(p.Status, status, StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
         catch (Exception ex) { Debug.WriteLine($"[ERRO GET STATUS]: {ex.Message}"); return new List<Pedido>(); }
     }
@@ -93,9 +95,11 @@ public class PedidoService : IPedidoService
         {
             "Aguardando" => $"api/pedidos/{id}/separar",
             "Em Separação" => $"api/pedidos/{id}/AguardandoConfe",
+            "Em Separaçao" => $"api/pedidos/{id}/AguardandoConfe",
             "Aguardando Conferencia" => $"api/pedidos/{id}/EmConferencia",
             "Em Conferencia" => $"api/pedidos/{id}/AguardandoExped",
             "Aguardando Expedição" => $"api/pedidos/{id}/Expedido",
+            "Aguardando Expediçao" => $"api/pedidos/{id}/Expedido",
             _ => string.Empty
         };
 
@@ -119,6 +123,53 @@ public class PedidoService : IPedidoService
         {
             var payload = new { Volumes = volumes, Usuario = usuario, ErrosEvitados = errosEvitados };
             var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{id}/ConcluirConferencia", payload);
+            if (response.IsSuccessStatusCode) return (true, string.Empty);
+
+            string detalhe = await response.Content.ReadAsStringAsync();
+            return (false, $"HTTP {(int)response.StatusCode}: {detalhe}");
+        }
+        catch (Exception ex) { return (false, $"Erro de Conexão: {ex.Message}"); }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> PausarPedidoAsync(Pedido pedido, string etapa, string usuario, int errosEvitados = 0)
+    {
+        try
+        {
+            var payload = new
+            {
+                Etapa = etapa,
+                Usuario = usuario,
+                ErrosEvitados = errosEvitados,
+                Itens = pedido.Itens?.Select(i => new
+                {
+                    Id = i.Id,
+                    CodItem = i.CodItem,
+                    ScansSep = i.BipagensSeparacao,
+                    ScansConf = i.BipagensConferencia
+                }).ToList(),
+                VolumesPedidos = pedido.VolumesPedidos?.Select(v => new
+                {
+                    Id = v.Id,
+                    CodigoVolume = v.CodigoVolume,
+                    BipadoExpedicao = v.BipadoExpedicao
+                }).ToList()
+            };
+
+            var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{pedido.IdPedido}/pausar", payload);
+            if (response.IsSuccessStatusCode) return (true, string.Empty);
+
+            string detalhe = await response.Content.ReadAsStringAsync();
+            return (false, $"HTTP {(int)response.StatusCode}: {detalhe}");
+        }
+        catch (Exception ex) { return (false, $"Erro de Conexão: {ex.Message}"); }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> RetomarPedidoAsync(int id, string usuario)
+    {
+        try
+        {
+            var payload = new { Usuario = usuario };
+            var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{id}/retomar", payload);
             if (response.IsSuccessStatusCode) return (true, string.Empty);
 
             string detalhe = await response.Content.ReadAsStringAsync();
@@ -161,9 +212,9 @@ public class PedidoService : IPedidoService
             if (response.IsSuccessStatusCode)
             {
                 var bytes = await response.Content.ReadAsByteArrayAsync();
-                string caminhoFicheiro = Path.Combine(FileSystem.CacheDirectory, "Relatorio_Produtividade.csv");
-                File.WriteAllBytes(caminhoFicheiro, bytes);
-                return caminhoFicheiro;
+                string caminhoArquivo = Path.Combine(FileSystem.CacheDirectory, "Relatorio_Produtividade.csv");
+                File.WriteAllBytes(caminhoArquivo, bytes);
+                return caminhoArquivo;
             }
             return null;
         }

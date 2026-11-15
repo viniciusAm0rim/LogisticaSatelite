@@ -1,4 +1,5 @@
-﻿using Microsoft.Maui.Storage;
+﻿using System.Globalization;
+using Microsoft.Maui.Storage;
 using SpringApp.Models;
 
 namespace SpringApp.Services;
@@ -123,7 +124,10 @@ public class MockPedidoService : IPedidoService
     public async Task<List<Pedido>> ObterPorStatusAsync(string status)
     {
         await Task.Delay(150);
-        return _pedidosMock.Where(p => p.Status.Equals(status, StringComparison.OrdinalIgnoreCase)).ToList();
+        // Pedidos em espera ficam visíveis apenas no card superior dedicado até serem retomados
+        return _pedidosMock
+            .Where(p => !p.EmEspera && p.Status.Equals(status, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     public async Task<List<Pedido>> ObterPorClienteAsync(string termoCliente)
@@ -167,11 +171,16 @@ public class MockPedidoService : IPedidoService
         DateTime dataHoraAtual = DateTime.Now;
         string usuarioAtual = ObterUsuarioLogado(usuario);
 
+        mock.EmEspera = false;
+        mock.EtapaPausada = string.Empty;
+        mock.PausadoPor = string.Empty;
+        mock.DataHoraPausa = null;
+
         if (mock.Status.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
         {
             mock.Status = "Em Separaçao";
             mock.SepUser = usuarioAtual;
-            mock.SepInicioData = dataHoraAtual;
+            mock.SepInicioData ??= dataHoraAtual;
         }
         else if (mock.Status.Equals("Em Separaçao", StringComparison.OrdinalIgnoreCase) || mock.Status.Equals("Em Separação", StringComparison.OrdinalIgnoreCase))
         {
@@ -184,7 +193,7 @@ public class MockPedidoService : IPedidoService
         {
             mock.Status = "Em Conferencia";
             mock.ConfUser = usuarioAtual;
-            mock.ConfInicioData = dataHoraAtual;
+            mock.ConfInicioData ??= dataHoraAtual;
         }
         else if (mock.Status.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase) || mock.Status.Equals("Aguardando Expedição", StringComparison.OrdinalIgnoreCase))
         {
@@ -205,6 +214,11 @@ public class MockPedidoService : IPedidoService
         if (mock == null) return (false, "Pedido não encontrado.");
 
         string usuarioAtual = ObterUsuarioLogado(usuario);
+
+        mock.EmEspera = false;
+        mock.EtapaPausada = string.Empty;
+        mock.PausadoPor = string.Empty;
+        mock.DataHoraPausa = null;
 
         mock.Status = "Aguardando Expediçao";
         mock.Volumes = volumes;
@@ -227,6 +241,66 @@ public class MockPedidoService : IPedidoService
     }
 
     /// <summary>
+    /// Coloca o pedido em espera (pausa), preservando os itens/volumes já bipados e registrando o evento para o relatório.
+    /// </summary>
+    public async Task<(bool Sucesso, string Mensagem)> PausarPedidoAsync(Pedido pedido, string etapa, string usuario, int errosEvitados = 0)
+    {
+        await Task.Delay(150);
+        var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == pedido.IdPedido);
+        if (mock == null) return (false, "Pedido não encontrado.");
+
+        string usuarioAtual = ObterUsuarioLogado(usuario);
+        DateTime agora = DateTime.Now;
+
+        mock.EmEspera = true;
+        mock.EtapaPausada = etapa;
+        mock.PausadoPor = usuarioAtual;
+        mock.DataHoraPausa = agora;
+        mock.ErrosEvitados += errosEvitados;
+
+        if (etapa == "Expedição" && mock.ExpInicioData == null)
+        {
+            mock.ExpInicioData = agora;
+            mock.ExpUser = usuarioAtual;
+        }
+
+        mock.HistoricoPausas.Add(new RegistroPausa
+        {
+            Etapa = etapa,
+            OperadorPausa = usuarioAtual,
+            DataHoraPausa = agora
+        });
+
+        return (true, "Pedido colocado em espera.");
+    }
+
+    /// <summary>
+    /// Retoma um pedido que estava em espera, registrando a retomada para o relatório e mantendo o progresso salvo.
+    /// </summary>
+    public async Task<(bool Sucesso, string Mensagem)> RetomarPedidoAsync(int id, string usuario)
+    {
+        await Task.Delay(150);
+        var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
+        if (mock == null) return (false, "Pedido não encontrado.");
+
+        string usuarioAtual = ObterUsuarioLogado(usuario);
+        DateTime agora = DateTime.Now;
+
+        var ultimaPausaAberta = mock.HistoricoPausas.LastOrDefault(p => p.DataHoraRetomada == null);
+        if (ultimaPausaAberta != null)
+        {
+            ultimaPausaAberta.OperadorRetomada = usuarioAtual;
+            ultimaPausaAberta.DataHoraRetomada = agora;
+        }
+
+        mock.EmEspera = false;
+        mock.PausadoPor = string.Empty;
+        mock.DataHoraPausa = null;
+
+        return (true, "Pedido retomado.");
+    }
+
+    /// <summary>
     /// Método acionado pelo botão 'Cancelar' das páginas.
     /// Registra a tentativa cancelada em uma linha isolada no relatório e reverte o pedido + itens lidos.
     /// </summary>
@@ -239,6 +313,14 @@ public class MockPedidoService : IPedidoService
         string usuarioAtual = ObterUsuarioLogado(null);
         DateTime horaCancelamento = DateTime.Now;
         string statusAtual = mock.Status ?? "Aguardando";
+
+        // Encerra eventual pausa aberta caso o operador cancele diretamente
+        var pausaAberta = mock.HistoricoPausas.LastOrDefault(p => p.DataHoraRetomada == null);
+        if (pausaAberta != null)
+        {
+            pausaAberta.OperadorRetomada = $"{usuarioAtual} (Cancelado)";
+            pausaAberta.DataHoraRetomada = horaCancelamento;
+        }
 
         // 1. SE O PEDIDO ESTAVA EM ANDAMENTO, GRAVA UMA LINHA DE CANCELAMENTO NO HISTÓRICO
         if (!statusAtual.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
@@ -257,11 +339,17 @@ public class MockPedidoService : IPedidoService
                 ConfInicioData = mock.ConfInicioData,
                 ConfFimData = mock.ConfFimData,
                 CancelData = horaCancelamento,
-                ErrosEvitados = mock.ErrosEvitados
+                ErrosEvitados = mock.ErrosEvitados,
+                HistoricoPausas = new List<RegistroPausa>(mock.HistoricoPausas)
             };
 
             _historicoRelatorio.Add(registroCancelado);
         }
+
+        mock.EmEspera = false;
+        mock.EtapaPausada = string.Empty;
+        mock.PausadoPor = string.Empty;
+        mock.DataHoraPausa = null;
 
         // 2. REVERTE O STATUS DO PEDIDO E RESETA AS BIPAGENS DOS ITENS
         if (statusAtual.Equals("Em Separaçao", StringComparison.OrdinalIgnoreCase) ||
@@ -272,7 +360,6 @@ public class MockPedidoService : IPedidoService
             mock.SepInicioData = null;
             mock.SepFimData = null;
 
-            // Zera as leituras de separação dos itens
             if (mock.Itens != null)
             {
                 foreach (var item in mock.Itens)
@@ -289,7 +376,6 @@ public class MockPedidoService : IPedidoService
             mock.ConfInicioData = null;
             mock.ConfFimData = null;
 
-            // Zera as leituras de conferência dos itens
             if (mock.Itens != null)
             {
                 foreach (var item in mock.Itens)
@@ -298,13 +384,13 @@ public class MockPedidoService : IPedidoService
                 }
             }
         }
-        else if (statusAtual.Equals("Expedido", StringComparison.OrdinalIgnoreCase))
+        else if (statusAtual.Equals("Aguardando Expediçao", StringComparison.OrdinalIgnoreCase) ||
+                 statusAtual.Equals("Expedido", StringComparison.OrdinalIgnoreCase))
         {
             mock.Status = "Aguardando Expediçao";
             mock.ExpUser = null;
             mock.ExpFimData = null;
 
-            // Zera as bipagens de volumes se houver
             if (mock.VolumesPedidos != null)
             {
                 foreach (var vol in mock.VolumesPedidos)
@@ -336,10 +422,9 @@ public class MockPedidoService : IPedidoService
 
         var linhasCsv = new List<string>
         {
-            "ID Pedido;Cliente;Status;Sep User;Conf User;Exp User;Hora Inicio Separacao;Hora Fim Separacao;Hora Inicio Conferencia;Hora Fim Conferencia;Data Expedicao;Hora Cancelamento;Erros Evitados;Tempo Medio (min)"
+            "ID Pedido;Cliente;Status;Sep User;Conf User;Exp User;Hora Inicio Separacao;Hora Fim Separacao;Hora Inicio Conferencia;Hora Fim Conferencia;Data Expedicao;Hora Cancelamento;Erros Evitados;Qtd Pausas;Tempo Pausado (min);Historico Pausas e Retomadas;Tempo Medio (min)"
         };
 
-        // Consolida o histórico de cancelamentos com todos os pedidos atuais
         var todosRegistros = _historicoRelatorio.Concat(_pedidosMock).ToList();
 
         foreach (var p in todosRegistros)
@@ -349,11 +434,15 @@ public class MockPedidoService : IPedidoService
                 bool matchSep = p.SepUser != null && p.SepUser.Equals(operadorFiltro, StringComparison.OrdinalIgnoreCase);
                 bool matchConf = p.ConfUser != null && p.ConfUser.Equals(operadorFiltro, StringComparison.OrdinalIgnoreCase);
                 bool matchExp = p.ExpUser != null && p.ExpUser.Equals(operadorFiltro, StringComparison.OrdinalIgnoreCase);
+                bool matchPausa = p.HistoricoPausas != null && p.HistoricoPausas.Any(h =>
+                    (h.OperadorPausa != null && h.OperadorPausa.Equals(operadorFiltro, StringComparison.OrdinalIgnoreCase)) ||
+                    (h.OperadorRetomada != null && h.OperadorRetomada.Equals(operadorFiltro, StringComparison.OrdinalIgnoreCase)));
 
-                if (!matchSep && !matchConf && !matchExp)
+                if (!matchSep && !matchConf && !matchExp && !matchPausa)
                     continue;
             }
 
+            string statusExibicao = p.EmEspera ? $"Em Espera ({p.EtapaPausada})" : p.Status;
             string sepInicio = p.SepInicioData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
             string sepFim = p.SepFimData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
             string confInicio = p.ConfInicioData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
@@ -361,7 +450,30 @@ public class MockPedidoService : IPedidoService
             string expFim = p.ExpFimData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
             string cancelData = p.CancelData?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-";
 
-            linhasCsv.Add($"{p.IdPedido};{p.Cliente};{p.Status};{p.SepUser ?? "-"};{p.ConfUser ?? "-"};{p.ExpUser ?? "-"};{sepInicio};{sepFim};{confInicio};{confFim};{expFim};{cancelData};{p.ErrosEvitados};5,00");
+            int qtdPausas = p.HistoricoPausas?.Count ?? 0;
+            double minutosPausados = 0;
+            string detalhesPausas = "-";
+
+            if (qtdPausas > 0 && p.HistoricoPausas != null)
+            {
+                var eventosFormatados = new List<string>();
+                foreach (var h in p.HistoricoPausas)
+                {
+                    DateTime fimRef = h.DataHoraRetomada ?? DateTime.Now;
+                    minutosPausados += Math.Max(0, (fimRef - h.DataHoraPausa).TotalMinutes);
+
+                    string retomadaStr = h.DataHoraRetomada.HasValue
+                        ? $"Retomado {h.DataHoraRetomada.Value:HH:mm:ss} ({h.OperadorRetomada})"
+                        : "Ainda em espera";
+
+                    eventosFormatados.Add($"[{h.Etapa}] Pausa {h.DataHoraPausa:HH:mm:ss} ({h.OperadorPausa}) -> {retomadaStr}");
+                }
+                detalhesPausas = string.Join(" | ", eventosFormatados);
+            }
+
+            string tempoPausadoStr = minutosPausados.ToString("F2", new CultureInfo("pt-BR"));
+
+            linhasCsv.Add($"{p.IdPedido};{p.Cliente};{statusExibicao};{p.SepUser ?? "-"};{p.ConfUser ?? "-"};{p.ExpUser ?? "-"};{sepInicio};{sepFim};{confInicio};{confFim};{expFim};{cancelData};{p.ErrosEvitados};{qtdPausas};{tempoPausadoStr};{detalhesPausas};5,00");
         }
 
         await File.WriteAllLinesAsync(filePath, linhasCsv, System.Text.Encoding.UTF8);

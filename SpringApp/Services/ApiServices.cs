@@ -37,7 +37,8 @@ public class ApiServices : IPedidoService
             string endpoint = string.IsNullOrEmpty(status)
                 ? "api/pedidos"
                 : $"api/pedidos?status={Uri.EscapeDataString(status)}";
-            return await _httpClient.GetFromJsonAsync<List<Pedido>>(endpoint, _jsonOptions) ?? new();
+            var lista = await _httpClient.GetFromJsonAsync<List<Pedido>>(endpoint, _jsonOptions) ?? new();
+            return lista.Where(p => !p.EmEspera).ToList();
         }
         catch (Exception)
         {
@@ -95,8 +96,10 @@ public class ApiServices : IPedidoService
         {
             "Aguardando" => $"api/pedidos/{id}/separar",
             "Em Separação" => $"api/pedidos/{id}/AguardandoConfe",
+            "Em Separaçao" => $"api/pedidos/{id}/AguardandoConfe",
             "Aguardando Conferencia" => $"api/pedidos/{id}/EmConferencia",
             "Aguardando Expedição" => $"api/pedidos/{id}/Expedido",
+            "Aguardando Expediçao" => $"api/pedidos/{id}/Expedido",
             _ => string.Empty
         };
 
@@ -140,6 +143,53 @@ public class ApiServices : IPedidoService
         }
     }
 
+    public async Task<(bool Sucesso, string Mensagem)> PausarPedidoAsync(Pedido pedido, string etapa, string usuario, int errosEvitados = 0)
+    {
+        try
+        {
+            var dto = new
+            {
+                Etapa = etapa,
+                Usuario = usuario,
+                ErrosEvitados = errosEvitados,
+                Itens = pedido.Itens?.Select(i => new
+                {
+                    Id = i.Id,
+                    CodItem = i.CodItem,
+                    ScansSep = i.BipagensSeparacao,
+                    ScansConf = i.BipagensConferencia
+                }).ToList(),
+                VolumesPedidos = pedido.VolumesPedidos?.Select(v => new
+                {
+                    Id = v.Id,
+                    CodigoVolume = v.CodigoVolume,
+                    BipadoExpedicao = v.BipadoExpedicao
+                }).ToList()
+            };
+
+            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{pedido.IdPedido}/pausar", dto, _jsonOptions);
+            return response.IsSuccessStatusCode ? (true, string.Empty) : (false, "Erro ao colocar pedido em espera.");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de conexão: {ex.Message}");
+        }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> RetomarPedidoAsync(int id, string usuario)
+    {
+        try
+        {
+            var dto = new { Usuario = usuario };
+            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/retomar", dto, _jsonOptions);
+            return response.IsSuccessStatusCode ? (true, string.Empty) : (false, "Erro ao retomar pedido.");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de conexão: {ex.Message}");
+        }
+    }
+
     public async Task<(bool Sucesso, string Mensagem)> ReverterEtapaAsync(int id)
     {
         try
@@ -176,9 +226,9 @@ public class ApiServices : IPedidoService
             if (response.IsSuccessStatusCode)
             {
                 var bytes = await response.Content.ReadAsByteArrayAsync();
-                string caminhoFicheiro = Path.Combine(FileSystem.CacheDirectory, "Relatorio_Produtividade.csv");
-                File.WriteAllBytes(caminhoFicheiro, bytes);
-                return caminhoFicheiro;
+                string caminhoArquivo = Path.Combine(FileSystem.CacheDirectory, "Relatorio_Produtividade.csv");
+                File.WriteAllBytes(caminhoArquivo, bytes);
+                return caminhoArquivo;
             }
             return null;
         }

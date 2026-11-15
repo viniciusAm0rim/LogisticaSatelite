@@ -15,7 +15,6 @@ builder.Services.AddControllers()
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Configurações do Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -29,14 +28,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Desativado temporariamente para permitir acesso HTTP direto via IP da rede (192.168.15.12)
-// app.UseHttpsRedirection();
-
-app.UseAuthorization();
-app.MapControllers();
-
-app.Run();
-// Captura requisições que não corresponderam a nenhum endpoint (404) e devolve um JSON com o motivo
+// Captura requisições 404 e devolve detalhes no console e no JSON
 app.Use(async (context, next) =>
 {
     await next();
@@ -48,28 +40,23 @@ app.Use(async (context, next) =>
         var respostaDetalhada = new
         {
             erro = "Rota não encontrada (404)",
-            motivo = "A URL ou o método HTTP enviado pelo aplicativo não existe nesta API.",
+            motivo = "A URL ou o método HTTP enviado pelo cliente não existe nesta API.",
             urlTentada = context.Request.Path.Value,
             metodoHttp = context.Request.Method,
-            queryParameters = context.Request.QueryString.Value,
-            sugestao = "Verifique se a URL no SpringApp está escrita corretamente e se o ID do pedido está a ser passado na rota ou no corpo."
+            queryParameters = context.Request.QueryString.Value
         };
 
-        var jsonOptions = new System.Text.Json.JsonSerializerOptions
-        {
-            WriteIndented = true
-        };
+        var jsonResponse = System.Text.Json.JsonSerializer.Serialize(
+            respostaDetalhada,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
 
-        var jsonResponse = System.Text.Json.JsonSerializer.Serialize(respostaDetalhada, jsonOptions);
-
-        // Exibe no terminal da API para depuração imediata
-        Console.WriteLine($"\n[ERRO 404 CAPTURADO]");
-        Console.WriteLine($"-> Método: {context.Request.Method}");
-        Console.WriteLine($"-> URL: {context.Request.Path.Value}");
-        Console.WriteLine($"-> Query: {context.Request.QueryString.Value}\n");
+        Console.WriteLine($"\n[ERRO 404 CAPTURADO] {context.Request.Method} {context.Request.Path.Value}{context.Request.QueryString.Value}\n");
 
         await context.Response.WriteAsync(jsonResponse);
     }
 });
+
+app.UseAuthorization();
+app.MapControllers();
 
 app.Run();

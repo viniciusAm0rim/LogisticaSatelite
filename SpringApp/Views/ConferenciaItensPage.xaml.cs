@@ -9,7 +9,7 @@ public partial class ConferenciaItensPage : ContentPage
     private readonly IPedidoService _pedidoService;
     private bool _isFinalizando = false;
     private bool _bloqueioFoco = false;
-    private int _errosEvitados = 0; // <-- Variável para acumular os erros da conferência
+    private int _errosEvitados = 0;
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
     public ConferenciaItensPage(Pedido pedido, IPedidoService pedidoService)
@@ -66,13 +66,14 @@ public partial class ConferenciaItensPage : ContentPage
         GarantirFocoLeitor();
     }
 
+    protected override bool OnBackButtonPressed() => true;
+
     private void CarregarDados()
     {
         NumeroPedidoLabel.Text = $"#{_pedido.IdPedido:D4}";
         ClienteLabel.Text = (_pedido.Cliente ?? "").ToUpper();
         ModalLabel.Text = string.IsNullOrEmpty(_pedido.Modal) ? "PADRÃO" : _pedido.Modal.ToUpper();
 
-        // Atribui a lista uma única vez; as atualizações ocorrem via INotifyPropertyChanged do ItemPedido
         ItensCollectionView.ItemsSource = _pedido.Itens;
         AtualizarContadoresItens();
         GarantirFocoLeitor();
@@ -112,7 +113,7 @@ public partial class ConferenciaItensPage : ContentPage
         }
         else
         {
-            _errosEvitados++; // <-- Contabiliza erro de leitura incorreta na conferência
+            _errosEvitados++;
             _bloqueioFoco = true;
             try
             {
@@ -143,7 +144,7 @@ public partial class ConferenciaItensPage : ContentPage
                 }
                 else
                 {
-                    _errosEvitados++; // <-- Contabiliza erro manual incorreto
+                    _errosEvitados++;
                     await DisplayAlert("Erro", "Produto não encontrado.", "OK");
                 }
             }
@@ -191,14 +192,13 @@ public partial class ConferenciaItensPage : ContentPage
         _bloqueioFoco = true;
         try
         {
-            // O laço while trava a tela e reabre o popup até que um valor válido seja inserido
             while (!volumeValido)
             {
                 string resposta = await DisplayPromptAsync("Produtos Conferidos!", "Quantos volumes (caixas) este pedido gerou?", "Confirmar", "Cancelar", keyboard: Keyboard.Numeric);
 
                 if (int.TryParse(resposta, out volumes) && volumes > 0)
                 {
-                    volumeValido = true; // Quebra o laço e prossegue
+                    volumeValido = true;
                 }
                 else
                 {
@@ -219,7 +219,6 @@ public partial class ConferenciaItensPage : ContentPage
         if (_isFinalizando) return;
         _isFinalizando = true;
 
-        // Envia a quantidade de volumes e os erros acumulados para a API
         var (sucesso, msg) = await _pedidoService.ConcluirConferenciaAsync(_pedido.IdPedido, qtdVolumes, _usuarioLogado, _errosEvitados);
         if (sucesso)
         {
@@ -234,12 +233,36 @@ public partial class ConferenciaItensPage : ContentPage
         }
     }
 
+    private async void OnAguardarClicked(object sender, EventArgs e)
+    {
+        _bloqueioFoco = true;
+        try
+        {
+            bool confirm = await DisplayAlert("Colocar em Espera", "Deseja pausar esta conferência e manter os itens já bipados salvos?", "Sim, Aguardar", "Não");
+            if (confirm)
+            {
+                var (sucesso, msg) = await _pedidoService.PausarPedidoAsync(_pedido, "Conferência", _usuarioLogado, _errosEvitados);
+                if (sucesso)
+                {
+                    await Navigation.PopAsync();
+                    return;
+                }
+                await DisplayAlert("Erro", msg, "OK");
+            }
+        }
+        finally
+        {
+            _bloqueioFoco = false;
+        }
+        GarantirFocoLeitor();
+    }
+
     private async void OnCancelarClicked(object sender, EventArgs e)
     {
         _bloqueioFoco = true;
         try
         {
-            bool confirm = await DisplayAlert("Atenção", "Deseja sair?", "Sim", "Não");
+            bool confirm = await DisplayAlert("Atenção", "Deseja sair e cancelar o progresso atual?", "Sim", "Não");
             if (confirm)
             {
                 await _pedidoService.ReverterEtapaAsync(_pedido.IdPedido);

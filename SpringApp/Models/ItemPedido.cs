@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace SpringApp.Models;
 
@@ -16,7 +17,6 @@ public class ItemPedido : INotifyPropertyChanged
     public int PedidoId { get; set; }
     public int ProdutoId { get; set; }
 
-    // Propriedades simplificadas vindas da API
     public string CodItem { get; set; } = string.Empty;
     public string Nome { get; set; } = string.Empty;
     public string LocalPicking { get; set; } = string.Empty;
@@ -24,6 +24,7 @@ public class ItemPedido : INotifyPropertyChanged
     public int Quantidade { get; set; }
 
     private int _bipagensSeparacao;
+    [JsonPropertyName("scansSep")]
     public int BipagensSeparacao
     {
         get => _bipagensSeparacao;
@@ -43,6 +44,7 @@ public class ItemPedido : INotifyPropertyChanged
     }
 
     private int _bipagensConferencia;
+    [JsonPropertyName("scansConf")]
     public int BipagensConferencia
     {
         get => _bipagensConferencia;

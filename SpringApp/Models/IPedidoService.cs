@@ -13,7 +13,8 @@ public interface IPedidoService
     Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, string usuario = null, int errosEvitados = 0);
     Task<(bool Sucesso, string Mensagem)> ReverterEtapaAsync(int id);
     Task<(bool Sucesso, string Mensagem)> CancelarPedidoAsync(int id, string usuario);
+    Task<(bool Sucesso, string Mensagem)> PausarPedidoAsync(Pedido pedido, string etapa, string usuario, int errosEvitados = 0);
+    Task<(bool Sucesso, string Mensagem)> RetomarPedidoAsync(int id, string usuario);
     Task<string?> BaixarRelatorioProdutividadeAsync(string operadorFiltro);
     Task<(bool Sucesso, string Mensagem)> EnviarEstimativaAsync(int id, string dataHoraEstimada);
-
 }
