@@ -1,3 +1,4 @@
+using SpringApp.Helpers;
 using SpringApp.Models;
 using SpringApp.Services;
 
@@ -85,8 +86,63 @@ public partial class SeparacaoItensPage : ContentPage
         ClienteLabel.Text = (_pedido.Cliente ?? "").ToUpper();
         ModalLabel.Text = string.IsNullOrEmpty(_pedido.Modal) ? "PADRÃO" : _pedido.Modal.ToUpper();
 
+        CardNotificacaoEstimativaSep.IsVisible = _pedido.EstimativaPendenteSeparacao;
+
         ItensCollectionView.ItemsSource = _pedido.Itens;
         AtualizarContadores();
+        GarantirFocoLeitor();
+    }
+
+    private void OnAbrirModalEstimativaSepClicked(object sender, EventArgs e)
+    {
+        _bloqueioFoco = true;
+        int faltam = _pedido.Itens?.Sum(i => i.SeparacaoPendente) ?? 0;
+        LabelResumoItensSep.Text = $"Faltam separar {faltam} unidades neste pedido";
+        EstimativaSepDatePicker.Date = DateTime.Today;
+        EstimativaSepTimePicker.Time = DateTime.Now.TimeOfDay;
+        OverlayEstimativaSep.IsVisible = true;
+    }
+
+    private void OnCancelarModalEstimativaSepClicked(object sender, EventArgs e)
+    {
+        OverlayEstimativaSep.IsVisible = false;
+        _bloqueioFoco = false;
+        GarantirFocoLeitor();
+    }
+
+    private async void OnConfirmarModalEstimativaSepClicked(object sender, EventArgs e)
+    {
+        DateTime data = Convert.ToDateTime(EstimativaSepDatePicker.Date);
+        string dataFormatada = $"{data.Day:00}/{data.Month:00}/{data.Year}";
+
+        string horaBruta = EstimativaSepTimePicker.Time.ToString();
+        string horaFormatada = horaBruta.Length >= 5 ? horaBruta.Substring(0, 5) : horaBruta;
+        string dataHoraFinal = $"{dataFormatada} {horaFormatada}";
+
+        OverlayEstimativaSep.IsVisible = false;
+
+        var (sucesso, mensagem) = await _pedidoService.EnviarEstimativaAsync(
+            _pedido.IdPedido,
+            dataHoraFinal,
+            "Separacao",
+            _usuarioLogado);
+
+        if (sucesso)
+        {
+            _pedido.EstimativaPendenteSeparacao = false;
+            _pedido.EstimativaPendenteConferencia = true;
+            _pedido.EstimativaSeparacao = dataHoraFinal;
+            _pedido.EstimativaSeparacaoUser = _usuarioLogado;
+            CardNotificacaoEstimativaSep.IsVisible = false;
+
+            await DisplayAlert("Sucesso", "Previsão da separação registrada!", "OK");
+        }
+        else
+        {
+            await DisplayAlert("Erro", $"Falha ao enviar estimativa: {mensagem}", "OK");
+        }
+
+        _bloqueioFoco = false;
         GarantirFocoLeitor();
     }
 
@@ -200,10 +256,18 @@ public partial class SeparacaoItensPage : ContentPage
         _bloqueioFoco = true;
         try
         {
-            bool confirm = await DisplayAlert("Colocar em Espera", "Deseja pausar esta separação e manter os itens já bipados salvos?", "Sim, Aguardar", "Não");
+            string? motivo = await JustificativaHelper.SolicitarJustificativaAsync(this, "Colocar em Espera");
+            if (string.IsNullOrWhiteSpace(motivo)) return;
+
+            bool confirm = await DisplayAlert(
+                "Colocar em Espera",
+                $"Motivo: {motivo}\nDeseja pausar esta separação e manter os itens já bipados salvos?",
+                "Sim, Aguardar",
+                "Não");
+
             if (confirm)
             {
-                var (sucesso, msg) = await _pedidoService.PausarPedidoAsync(_pedido, "Separação", _usuarioLogado, _errosEvitados);
+                var (sucesso, msg) = await _pedidoService.PausarPedidoAsync(_pedido, "Separação", _usuarioLogado, _errosEvitados, motivo);
                 if (sucesso)
                 {
                     await Navigation.PopAsync();
@@ -224,10 +288,18 @@ public partial class SeparacaoItensPage : ContentPage
         _bloqueioFoco = true;
         try
         {
-            bool confirm = await DisplayAlert("Atenção", "Deseja sair e cancelar o progresso atual?", "Sim", "Não");
+            string? motivo = await JustificativaHelper.SolicitarJustificativaAsync(this, "Cancelar Progresso");
+            if (string.IsNullOrWhiteSpace(motivo)) return;
+
+            bool confirm = await DisplayAlert(
+                "Atenção",
+                $"Motivo: {motivo}\nDeseja sair e cancelar o progresso atual?",
+                "Sim",
+                "Não");
+
             if (confirm)
             {
-                await _pedidoService.ReverterEtapaAsync(_pedido.IdPedido);
+                await _pedidoService.ReverterEtapaAsync(_pedido.IdPedido, motivo, _usuarioLogado);
                 await Navigation.PopAsync();
                 return;
             }

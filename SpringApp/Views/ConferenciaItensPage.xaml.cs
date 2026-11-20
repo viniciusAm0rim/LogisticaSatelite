@@ -1,3 +1,5 @@
+using System.Globalization;
+using SpringApp.Helpers;
 using SpringApp.Models;
 using SpringApp.Services;
 
@@ -5,11 +7,12 @@ namespace SpringApp.Views;
 
 public partial class ConferenciaItensPage : ContentPage
 {
-    private readonly Pedido _pedido;
+    private Pedido _pedido;
     private readonly IPedidoService _pedidoService;
     private bool _isFinalizando = false;
     private bool _bloqueioFoco = false;
     private int _errosEvitados = 0;
+    private DateTime? _limiteMinimoConferencia;
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
     public ConferenciaItensPage(Pedido pedido, IPedidoService pedidoService)
@@ -24,6 +27,18 @@ public partial class ConferenciaItensPage : ContentPage
     {
         base.OnAppearing();
         await _pedidoService.BloquearPedidoAsync(_pedido.IdPedido, _usuarioLogado);
+
+        try
+        {
+            var atualizado = await _pedidoService.GetPedidoPorIdAsync(_pedido.IdPedido);
+            if (atualizado != null)
+            {
+                _pedido = atualizado;
+                CarregarDados();
+            }
+        }
+        catch { }
+
         GarantirFocoLeitor();
     }
 
@@ -68,14 +83,120 @@ public partial class ConferenciaItensPage : ContentPage
 
     protected override bool OnBackButtonPressed() => true;
 
+    // Preenche os dados do pedido e exibe o card enxuto de estimativa caso esteja pendente
     private void CarregarDados()
     {
         NumeroPedidoLabel.Text = $"#{_pedido.IdPedido:D4}";
         ClienteLabel.Text = (_pedido.Cliente ?? "").ToUpper();
         ModalLabel.Text = string.IsNullOrEmpty(_pedido.Modal) ? "PADRÃO" : _pedido.Modal.ToUpper();
 
+        CardNotificacaoEstimativaConf.IsVisible = _pedido.EstimativaPendenteConferencia;
+        if (_pedido.EstimativaPendenteConferencia && !string.IsNullOrWhiteSpace(_pedido.EstimativaSeparacao))
+        {
+            string autorSep = string.IsNullOrWhiteSpace(_pedido.EstimativaSeparacaoUser) ? "Separador" : _pedido.EstimativaSeparacaoUser;
+            LabelAvisoSeparacaoNaConf.Text = $"{autorSep}: {_pedido.EstimativaSeparacao}";
+        }
+        else
+        {
+            LabelAvisoSeparacaoNaConf.Text = "Informar previsão";
+        }
+
         ItensCollectionView.ItemsSource = _pedido.Itens;
         AtualizarContadoresItens();
+        GarantirFocoLeitor();
+    }
+
+    // Abre o formulario de estimativa da conferencia travado a partir da data/hora do separador
+    private void OnAbrirModalEstimativaConfClicked(object sender, EventArgs e)
+    {
+        _bloqueioFoco = true;
+        _limiteMinimoConferencia = null;
+
+        if (!string.IsNullOrWhiteSpace(_pedido.EstimativaSeparacao))
+        {
+            string autorSep = string.IsNullOrWhiteSpace(_pedido.EstimativaSeparacaoUser) ? "Separador" : _pedido.EstimativaSeparacaoUser;
+            LabelModalSeparadorConf.Text = $"{autorSep}: {_pedido.EstimativaSeparacao}";
+            LabelModalSeparadorConf.IsVisible = true;
+
+            if (DateTime.TryParseExact(_pedido.EstimativaSeparacao.Trim(), "dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dtSep))
+            {
+                _limiteMinimoConferencia = dtSep;
+                DateTime referenciaInicial = DateTime.Now > dtSep ? DateTime.Now : dtSep;
+
+                EstimativaConfDatePicker.MinimumDate = dtSep.Date;
+                EstimativaConfDatePicker.Date = referenciaInicial.Date;
+                EstimativaConfTimePicker.Time = new TimeSpan(referenciaInicial.Hour, referenciaInicial.Minute, 0);
+            }
+            else
+            {
+                EstimativaConfDatePicker.MinimumDate = DateTime.Today;
+                EstimativaConfDatePicker.Date = DateTime.Today;
+                EstimativaConfTimePicker.Time = DateTime.Now.TimeOfDay;
+            }
+        }
+        else
+        {
+            LabelModalSeparadorConf.IsVisible = false;
+            EstimativaConfDatePicker.MinimumDate = DateTime.Today;
+            EstimativaConfDatePicker.Date = DateTime.Today;
+            EstimativaConfTimePicker.Time = DateTime.Now.TimeOfDay;
+        }
+
+        OverlayEstimativaConf.IsVisible = true;
+    }
+
+    // Fecha o formulario de estimativa e devolve o foco ao leitor
+    private void OnCancelarModalEstimativaConfClicked(object sender, EventArgs e)
+    {
+        OverlayEstimativaConf.IsVisible = false;
+        _limiteMinimoConferencia = null;
+        _bloqueioFoco = false;
+        GarantirFocoLeitor();
+    }
+
+    // Valida o horario minimo e envia a previsao final com assinatura do conferente
+    private async void OnConfirmarModalEstimativaConfClicked(object sender, EventArgs e)
+    {
+        DateTime dataSelecionada = Convert.ToDateTime(EstimativaConfDatePicker.Date).Date;
+        TimeSpan horaSelecionada = EstimativaConfTimePicker.Time ?? TimeSpan.Zero;
+        DateTime dataHoraEscolhida = dataSelecionada.Add(new TimeSpan(horaSelecionada.Hours, horaSelecionada.Minutes, 0));
+
+        if (_limiteMinimoConferencia.HasValue && dataHoraEscolhida < _limiteMinimoConferencia.Value)
+        {
+            await DisplayAlert(
+                "Horário Inválido",
+                $"A estimativa deve ser a partir de {_limiteMinimoConferencia.Value:dd/MM/yyyy HH:mm}.",
+                "OK");
+            return;
+        }
+
+        string dataHoraFinal = $"{dataHoraEscolhida:dd/MM/yyyy HH:mm}";
+
+        OverlayEstimativaConf.IsVisible = false;
+
+        var (sucesso, mensagem) = await _pedidoService.EnviarEstimativaAsync(
+            _pedido.IdPedido,
+            dataHoraFinal,
+            "Conferencia",
+            _usuarioLogado);
+
+        if (sucesso)
+        {
+            _pedido.EstimativaPendenteConferencia = false;
+            _pedido.EstimativaSolicitada = false;
+            _pedido.EstimativaConferencia = dataHoraFinal;
+            _pedido.EstimativaConferenciaUser = _usuarioLogado;
+            CardNotificacaoEstimativaConf.IsVisible = false;
+
+            await DisplayAlert("Sucesso", "Estimativa enviada ao comercial!", "OK");
+        }
+        else
+        {
+            await DisplayAlert("Erro", $"Falha ao enviar estimativa: {mensagem}", "OK");
+        }
+
+        _limiteMinimoConferencia = null;
+        _bloqueioFoco = false;
         GarantirFocoLeitor();
     }
 
@@ -238,10 +359,18 @@ public partial class ConferenciaItensPage : ContentPage
         _bloqueioFoco = true;
         try
         {
-            bool confirm = await DisplayAlert("Colocar em Espera", "Deseja pausar esta conferência e manter os itens já bipados salvos?", "Sim, Aguardar", "Não");
+            string? motivo = await JustificativaHelper.SolicitarJustificativaAsync(this, "Colocar em Espera");
+            if (string.IsNullOrWhiteSpace(motivo)) return;
+
+            bool confirm = await DisplayAlert(
+                "Colocar em Espera",
+                $"Motivo: {motivo}\nDeseja pausar esta conferência e manter os itens já bipados salvos?",
+                "Sim, Aguardar",
+                "Não");
+
             if (confirm)
             {
-                var (sucesso, msg) = await _pedidoService.PausarPedidoAsync(_pedido, "Conferência", _usuarioLogado, _errosEvitados);
+                var (sucesso, msg) = await _pedidoService.PausarPedidoAsync(_pedido, "Conferência", _usuarioLogado, _errosEvitados, motivo);
                 if (sucesso)
                 {
                     await Navigation.PopAsync();
@@ -262,10 +391,18 @@ public partial class ConferenciaItensPage : ContentPage
         _bloqueioFoco = true;
         try
         {
-            bool confirm = await DisplayAlert("Atenção", "Deseja sair e cancelar o progresso atual?", "Sim", "Não");
+            string? motivo = await JustificativaHelper.SolicitarJustificativaAsync(this, "Cancelar Progresso");
+            if (string.IsNullOrWhiteSpace(motivo)) return;
+
+            bool confirm = await DisplayAlert(
+                "Atenção",
+                $"Motivo: {motivo}\nDeseja sair e cancelar o progresso atual?",
+                "Sim",
+                "Não");
+
             if (confirm)
             {
-                await _pedidoService.ReverterEtapaAsync(_pedido.IdPedido);
+                await _pedidoService.ReverterEtapaAsync(_pedido.IdPedido, motivo, _usuarioLogado);
                 await Navigation.PopAsync();
                 return;
             }

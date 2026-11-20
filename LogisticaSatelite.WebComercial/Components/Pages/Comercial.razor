@@ -1,16 +1,33 @@
 ﻿@page "/comercial"
 @implements IDisposable
 @inject IPedidosService PedidosService
+@inject ICotacoesService CotacoesService
 @inject SessaoStateService Sessao
 @inject NavigationManager Navigation
 
 <PageTitle>Comercial — Logística Satélite</PageTitle>
 
 <div class="container-xl py-4">
+    <!-- Barra superior com botao de menu expansivel (3 barras) a esquerda -->
     <header class="topbar-card">
-        <div>
-            <h1 class="page-title mb-0">Painel Comercial</h1>
-            <p class="page-subtitle mb-0">Acompanhamento de pedidos e solicitação de estimativa de entrega</p>
+        <div class="d-flex align-items-center gap-3">
+            <button type="button"
+                    class="btn btn-menu-expansivel position-relative"
+                    title="Central de Tarefas"
+                    @onclick="AbrirMenuLateral">
+                <i class="bi bi-list fs-4"></i>
+                @if (TotalPendenciasGeral > 0)
+                {
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                        @TotalPendenciasGeral
+                    </span>
+                }
+            </button>
+
+            <div>
+                <h1 class="page-title mb-0">Painel Comercial</h1>
+                <p class="page-subtitle mb-0">Consulta e acompanhamento de status dos pedidos</p>
+            </div>
         </div>
 
         <div class="d-flex align-items-center gap-3">
@@ -21,6 +38,7 @@
         </div>
     </header>
 
+    <!-- Tabela principal focada apenas em verificar o status dos pedidos -->
     <section class="panel-card">
         <div class="row g-3 align-items-end mb-4">
             <div class="col-md-5 col-lg-4">
@@ -53,7 +71,7 @@
                     <button type="button"
                             class="btn btn-outline-secondary btn-sm ms-2"
                             disabled="@carregando"
-                            @onclick="CarregarPedidosAsync">
+                            @onclick="CarregarDadosAsync">
                         <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
                     </button>
                 }
@@ -72,7 +90,7 @@
             <div class="state-box state-error">
                 <p class="fw-semibold mb-1">Erro de conexão</p>
                 <p class="small mb-3">@erroConexao</p>
-                <button type="button" class="btn btn-primary-custom btn-sm" @onclick="CarregarPedidosAsync">
+                <button type="button" class="btn btn-primary-custom btn-sm" @onclick="CarregarDadosAsync">
                     Tentar novamente
                 </button>
             </div>
@@ -94,19 +112,15 @@
                 <table class="table table-hover align-middle mb-0 data-table">
                     <thead>
                         <tr>
-                            <th style="width: 110px;">ID Pedido</th>
+                            <th style="width: 120px;">ID Pedido</th>
                             <th>Cliente</th>
-                            <th style="width: 240px;">Modal</th>
-                            <th style="width: 210px;">Status Atual</th>
-                            <th class="text-end" style="width: 210px;">Ação</th>
+                            <th style="width: 260px;">Modal</th>
+                            <th style="width: 220px;">Status Atual</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var pedido in PedidosFiltrados)
                         {
-                            bool emEnvio = pedidosEmEnvio.Contains(pedido.Id);
-                            bool jaSolicitada = pedido.EstimativaSolicitada;
-
                             <tr>
                                 <td class="fw-semibold tabular-nums">#@pedido.Id</td>
                                 <td>@pedido.NomeCliente</td>
@@ -115,31 +129,6 @@
                                     <span class="status-pill @ObterClasseStatus(pedido.Status)">
                                         @pedido.Status
                                     </span>
-                                    @if (!string.IsNullOrWhiteSpace(pedido.DataHoraEstimada))
-                                    {
-                                        <div class="small text-muted mt-1">
-                                            Previsão: @pedido.DataHoraEstimada
-                                        </div>
-                                    }
-                                </td>
-                                <td class="text-end">
-                                    <button type="button"
-                                            class="btn btn-estimativa @(jaSolicitada ? "btn-estimativa-solicitada" : "")"
-                                            disabled="@(jaSolicitada || emEnvio)"
-                                            @onclick="() => SolicitarEstimativa(pedido)">
-                                        @if (emEnvio)
-                                        {
-                                            <span>Enviando...</span>
-                                        }
-                                        else if (jaSolicitada)
-                                        {
-                                            <span>Estimativa solicitada</span>
-                                        }
-                                        else
-                                        {
-                                            <span>Solicitar estimativa</span>
-                                        }
-                                    </button>
                                 </td>
                             </tr>
                         }
@@ -150,12 +139,393 @@
     </section>
 </div>
 
+<!-- Gaveta lateral expansivel (3 barras) -->
+@if (menuLateralAberto)
+{
+    <div class="drawer-backdrop" @onclick="FecharMenuLateral"></div>
+
+    <aside class="drawer-panel">
+        <div class="d-flex justify-content-between align-items-center pb-3 mb-3 border-bottom">
+            <div class="d-flex align-items-center gap-2">
+                @if (secaoAtivaMenu != SecaoMenuLateral.Principal)
+                {
+                    <button type="button" class="btn btn-sm btn-light" @onclick="VoltarMenuPrincipal">
+                        <i class="bi bi-arrow-left"></i>
+                    </button>
+                    <h2 class="h6 fw-bold mb-0">
+                        @(secaoAtivaMenu == SecaoMenuLateral.Estimativas ? "Estimativas" : "Cotações")
+                    </h2>
+                }
+                else
+                {
+                    <h2 class="h6 fw-bold mb-0">Central de Tarefas</h2>
+                }
+            </div>
+            <button type="button" class="btn-close" aria-label="Fechar" @onclick="FecharMenuLateral"></button>
+        </div>
+
+        @if (secaoAtivaMenu == SecaoMenuLateral.Principal)
+        {
+            <div class="d-flex flex-column gap-3">
+                <!-- Card padrao clicavel para Estimativas -->
+                <div class="task-menu-card" @onclick="AbrirSecaoEstimativas">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="task-menu-icon">
+                            <i class="bi bi-clock"></i>
+                        </div>
+                        <span class="fw-semibold text-dark">Estimativas</span>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2">
+                        @if (TotalPendenciasEstimativa > 0)
+                        {
+                            <span class="badge rounded-pill bg-danger">@TotalPendenciasEstimativa</span>
+                        }
+                        <i class="bi bi-chevron-right text-muted"></i>
+                    </div>
+                </div>
+
+                <!-- Card padrao clicavel para Cotacoes -->
+                <div class="task-menu-card" @onclick="AbrirSecaoCotacoes">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="task-menu-icon">
+                            <i class="bi bi-box-seam"></i>
+                        </div>
+                        <span class="fw-semibold text-dark">Cotações</span>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2">
+                        @if (TotalPendenciasCotacao > 0)
+                        {
+                            <span class="badge rounded-pill bg-danger">@TotalPendenciasCotacao</span>
+                        }
+                        <i class="bi bi-chevron-right text-muted"></i>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (secaoAtivaMenu == SecaoMenuLateral.Estimativas)
+        {
+            <!-- Secao interna de Estimativas: busca por ID + cards solicitados -->
+            <div class="drawer-content">
+                <label class="form-label small fw-semibold text-secondary" for="buscaEstimativaId">
+                    Buscar Pedido por ID
+                </label>
+                <div class="input-group mb-3">
+                    <input id="buscaEstimativaId"
+                           type="text"
+                           class="form-control"
+                           placeholder="Digite o ID (ex: 101)"
+                           @bind="termoBuscaEstimativa"
+                           @bind:event="oninput"
+                           @onkeyup="AoPressionarEnterBuscaEstimativa" />
+                    <button type="button" class="btn btn-dark" @onclick="PesquisarPedidoParaEstimativa">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(mensagemBuscaEstimativa))
+                {
+                    <div class="alert alert-warning py-2 px-3 small mb-3">
+                        @mensagemBuscaEstimativa
+                    </div>
+                }
+
+                @if (pedidoEncontradoBusca != null)
+                {
+                    bool emEnvio = pedidosEmEnvio.Contains(pedidoEncontradoBusca.Id);
+                    bool jaEmAndamento = pedidoEncontradoBusca.PossuiEstimativaEmAndamento;
+                    bool jaExpedido = pedidoEncontradoBusca.Status.Equals("Expedido", StringComparison.OrdinalIgnoreCase);
+
+                    <div class="est-card est-card-preview mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="fw-bold text-dark">#@pedidoEncontradoBusca.Id</span>
+                            <span class="status-pill @ObterClasseStatus(pedidoEncontradoBusca.Status)">
+                                @pedidoEncontradoBusca.Status
+                            </span>
+                        </div>
+                        <div class="small text-dark fw-semibold mb-1">@pedidoEncontradoBusca.NomeCliente</div>
+                        <div class="small text-muted mb-3">Modal: @pedidoEncontradoBusca.Modal</div>
+
+                        <button type="button"
+                                class="btn btn-sm w-100 @(jaEmAndamento ? "btn-secondary" : "btn-success fw-semibold")"
+                                disabled="@(jaEmAndamento || jaExpedido || emEnvio)"
+                                @onclick="() => SolicitarEstimativa(pedidoEncontradoBusca)">
+                            @if (emEnvio)
+                            {
+                                <span>Solicitando...</span>
+                            }
+                            else if (jaEmAndamento)
+                            {
+                                <span>Estimativa já solicitada</span>
+                            }
+                            else if (jaExpedido)
+                            {
+                                <span>Pedido já expedido</span>
+                            }
+                            else
+                            {
+                                <span>Solicitar Estimativa</span>
+                            }
+                        </button>
+                    </div>
+                }
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="small fw-bold text-uppercase text-muted">Solicitações Acompanhadas</span>
+                    <span class="badge bg-light text-dark border">@PedidosComEstimativa.Count</span>
+                </div>
+
+                @if (!PedidosComEstimativa.Any())
+                {
+                    <div class="text-center text-muted small py-4 border rounded-3 bg-light">
+                        Nenhuma estimativa solicitada no momento.
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex flex-column gap-2">
+                        @foreach (var item in PedidosComEstimativa)
+                        {
+                            string? horarioConferente = item.EstimativaFinalConferente;
+                            bool respondido = !string.IsNullOrWhiteSpace(horarioConferente);
+
+                            <div class="est-card @(respondido ? "est-card-concluido" : "est-card-aguardando")">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="fw-bold text-dark">#@item.Id</span>
+                                    <span class="status-pill @ObterClasseStatus(item.Status)">@item.Status</span>
+                                </div>
+                                <div class="small fw-semibold text-dark">@item.NomeCliente</div>
+                                <div class="small text-muted mb-2">Modal: @item.Modal</div>
+
+                                @if (respondido)
+                                {
+                                    <div class="est-retorno-box est-retorno-ok">
+                                        <div class="fw-bold small text-success">
+                                            <i class="bi bi-check-circle-fill me-1"></i>Previsão: @horarioConferente
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(item.EstimativaConferenciaUser))
+                                        {
+                                            <div class="small text-muted">
+                                                Conferente: @item.EstimativaConferenciaUser
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="est-retorno-box est-retorno-pendente">
+                                        <span class="small fw-semibold text-warning-emphasis">
+                                            <i class="bi bi-hourglass-split me-1"></i>Aguardando retorno do conferente
+                                        </span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else if (secaoAtivaMenu == SecaoMenuLateral.Cotacoes)
+        {
+            <!-- Secao interna de Cotacoes Avulsas (Pre-pedido) -->
+            <div class="drawer-content">
+                <div class="est-card est-card-preview mb-4">
+                    <div class="small fw-bold text-uppercase text-secondary mb-2">Nova Solicitação</div>
+
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold mb-1">Cliente</label>
+                        <input type="text"
+                               class="form-control form-control-sm"
+                               placeholder="Nome do cliente"
+                               @bind="cotacaoCliente" />
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold mb-1">Observação (opcional)</label>
+                        <input type="text"
+                               class="form-control form-control-sm"
+                               placeholder="Ex: Caixa reforçada / urgência"
+                               @bind="cotacaoObservacao" />
+                    </div>
+
+                    <!-- Busca no catalogo para adicionar itens -->
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold mb-1">Adicionar Produto</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="SKU ou nome do item"
+                                   @bind="termoBuscaProdutoCotacao"
+                                   @bind:event="oninput"
+                                   @onkeyup="AoPressionarEnterProdutoCotacao" />
+                            <button type="button" class="btn btn-outline-secondary" @onclick="PesquisarProdutosCotacaoAsync">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    @if (produtosEncontradosCotacao.Any())
+                    {
+                        <div class="border rounded bg-white mb-2" style="max-height: 130px; overflow-y: auto;">
+                            @foreach (var prod in produtosEncontradosCotacao)
+                            {
+                                <button type="button"
+                                        class="btn btn-sm btn-light w-100 text-start border-bottom rounded-0 py-1 px-2"
+                                        @onclick="() => SelecionarProdutoParaCotacao(prod)">
+                                    <span class="fw-bold small">@prod.CodItem</span>
+                                    <span class="small text-muted"> — @prod.Nome</span>
+                                </button>
+                            }
+                        </div>
+                    }
+
+                    @if (produtoSelecionadoCotacao != null)
+                    {
+                        <div class="d-flex align-items-center gap-2 bg-white border rounded p-2 mb-2">
+                            <div class="flex-grow-1 small text-truncate">
+                                <strong>@produtoSelecionadoCotacao.CodItem</strong> - @produtoSelecionadoCotacao.Nome
+                            </div>
+                            <input type="number"
+                                   min="1"
+                                   class="form-control form-control-sm text-center"
+                                   style="width: 65px;"
+                                   @bind="qtdItemCotacao" />
+                            <button type="button" class="btn btn-sm btn-dark" @onclick="AdicionarItemListaCotacao">
+                                +
+                            </button>
+                        </div>
+                    }
+
+                    @if (itensNovaCotacao.Any())
+                    {
+                        <div class="border rounded bg-white p-2 mb-3">
+                            <div class="small fw-bold text-muted mb-1">Itens (@itensNovaCotacao.Count)</div>
+                            @foreach (var item in itensNovaCotacao)
+                            {
+                                <div class="d-flex justify-content-between align-items-center small py-1 border-bottom">
+                                    <span class="text-truncate me-2"><strong>@item.Quantidade x</strong> @item.Nome</span>
+                                    <button type="button"
+                                            class="btn btn-link btn-sm text-danger p-0 text-decoration-none"
+                                            @onclick="() => RemoverItemListaCotacao(item)">
+                                        &times;
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(mensagemErroCotacao))
+                    {
+                        <div class="alert alert-warning py-1 px-2 small mb-2">@mensagemErroCotacao</div>
+                    }
+
+                    <button type="button"
+                            class="btn btn-success btn-sm w-100 fw-semibold"
+                            disabled="@enviandoCotacao"
+                            @onclick="EnviarSolicitacaoCotacaoAsync">
+                        @(enviandoCotacao ? "Enviando..." : "Solicitar Cotação")
+                    </button>
+                </div>
+
+                <!-- Lista de cotacoes solicitadas e respondidas -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="small fw-bold text-uppercase text-muted">Cotações Solicitadas</span>
+                    <span class="badge bg-light text-dark border">@cotacoes.Count</span>
+                </div>
+
+                @if (!cotacoes.Any())
+                {
+                    <div class="text-center text-muted small py-4 border rounded-3 bg-light">
+                        Nenhuma cotação solicitada no momento.
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex flex-column gap-2">
+                        @foreach (var cot in cotacoes)
+                        {
+                            <div class="est-card @(cot.EstaRespondida ? "est-card-concluido" : "est-card-aguardando")">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="fw-bold text-dark">Cotação #@cot.Id</span>
+                                    <span class="status-pill @(cot.EstaRespondida ? "pill-success" : "pill-active")">
+                                        @cot.Status
+                                    </span>
+                                </div>
+
+                                <div class="small fw-semibold text-dark">@cot.Cliente</div>
+                                <div class="small text-muted mb-2">
+                                    @cot.Itens.Sum(i => i.Quantidade) un. (@cot.Itens.Count @(cot.Itens.Count == 1 ? "item" : "itens"))
+                                </div>
+
+                                @if (cot.EstaRespondida)
+                                {
+                                    <div class="est-retorno-box est-retorno-ok">
+                                        <div class="small fw-bold text-success">
+                                            Volumes: @cot.Volumes • Peso: @cot.PesoTotalKg kg
+                                        </div>
+                                        <div class="small text-dark">
+                                            Dimensões: @cot.Dimensoes
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(cot.RespondidoPor))
+                                        {
+                                            <div class="small text-muted mt-1">
+                                                Por: @cot.RespondidoPor
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="est-retorno-box est-retorno-pendente">
+                                        <span class="small fw-semibold text-warning-emphasis">
+                                            <i class="bi bi-hourglass-split me-1"></i>Aguardando cubagem e peso
+                                        </span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </aside>
+}
+
 @code {
+    private enum SecaoMenuLateral
+    {
+        Principal,
+        Estimativas,
+        Cotacoes
+    }
+
     private List<PedidoDto> pedidos = new();
+    private List<CotacaoDto> cotacoes = new();
     private readonly HashSet<int> pedidosEmEnvio = new();
     private string termoBuscaId = string.Empty;
     private bool carregando = true;
     private string? erroConexao;
+
+    // Controle da gaveta lateral expansivel
+    private bool menuLateralAberto = false;
+    private SecaoMenuLateral secaoAtivaMenu = SecaoMenuLateral.Principal;
+
+    // Estado da sub-aba Estimativas
+    private string termoBuscaEstimativa = string.Empty;
+    private string? mensagemBuscaEstimativa;
+    private PedidoDto? pedidoEncontradoBusca;
+
+    // Estado da sub-aba Cotacoes
+    private string cotacaoCliente = string.Empty;
+    private string cotacaoObservacao = string.Empty;
+    private string termoBuscaProdutoCotacao = string.Empty;
+    private List<ProdutoCatalogoDto> produtosEncontradosCotacao = new();
+    private ProdutoCatalogoDto? produtoSelecionadoCotacao;
+    private int qtdItemCotacao = 1;
+    private List<ItemCotacaoDto> itensNovaCotacao = new();
+    private string? mensagemErroCotacao;
+    private bool enviandoCotacao = false;
 
     private CancellationTokenSource? pollingCts;
 
@@ -173,6 +543,16 @@
         }
     }
 
+    private List<PedidoDto> PedidosComEstimativa => pedidos
+        .Where(p => p.PossuiEstimativaEmAndamento || !string.IsNullOrWhiteSpace(p.EstimativaFinalConferente))
+        .OrderByDescending(p => p.PossuiEstimativaEmAndamento)
+        .ThenByDescending(p => p.Id)
+        .ToList();
+
+    private int TotalPendenciasEstimativa => pedidos.Count(p => p.PossuiEstimativaEmAndamento);
+    private int TotalPendenciasCotacao => cotacoes.Count(c => !c.EstaRespondida);
+    private int TotalPendenciasGeral => TotalPendenciasEstimativa + TotalPendenciasCotacao;
+
     protected override async Task OnInitializedAsync()
     {
         if (!Sessao.Autenticado || Sessao.Perfil != PerfilAcesso.Comercial)
@@ -181,7 +561,7 @@
             return;
         }
 
-        await CarregarPedidosAsync();
+        await CarregarDadosAsync();
 
         if (!Sessao.UsarMock)
         {
@@ -189,22 +569,23 @@
         }
     }
 
-    private async Task CarregarPedidosAsync()
+    private async Task CarregarDadosAsync()
     {
         carregando = true;
         erroConexao = null;
 
-        var resultado = await PedidosService.ObterPedidosAsync();
-
-        if (resultado.Sucesso)
+        var resultadoPedidos = await PedidosService.ObterPedidosAsync();
+        if (resultadoPedidos.Sucesso)
         {
-            pedidos = resultado.Pedidos;
+            pedidos = resultadoPedidos.Pedidos;
+            AtualizarReferenciaBuscaEstimativa();
         }
         else
         {
-            erroConexao = resultado.MensagemErro;
+            erroConexao = resultadoPedidos.MensagemErro;
         }
 
+        cotacoes = await CotacoesService.ObterCotacoesAsync();
         carregando = false;
     }
 
@@ -223,15 +604,85 @@
                 {
                     pedidos = resultado.Pedidos;
                     erroConexao = null;
-                    await InvokeAsync(StateHasChanged);
+                    AtualizarReferenciaBuscaEstimativa();
                 }
+
+                cotacoes = await CotacoesService.ObterCotacoesAsync();
+                await InvokeAsync(StateHasChanged);
             }
         }, token);
     }
 
+    private void AtualizarReferenciaBuscaEstimativa()
+    {
+        if (pedidoEncontradoBusca != null)
+        {
+            pedidoEncontradoBusca = pedidos.FirstOrDefault(p => p.Id == pedidoEncontradoBusca.Id);
+        }
+    }
+
+    private void AbrirMenuLateral()
+    {
+        menuLateralAberto = true;
+        secaoAtivaMenu = SecaoMenuLateral.Principal;
+    }
+
+    private void FecharMenuLateral()
+    {
+        menuLateralAberto = false;
+        secaoAtivaMenu = SecaoMenuLateral.Principal;
+    }
+
+    private void AbrirSecaoEstimativas()
+    {
+        secaoAtivaMenu = SecaoMenuLateral.Estimativas;
+        mensagemBuscaEstimativa = null;
+    }
+
+    private async Task AbrirSecaoCotacoes()
+    {
+        secaoAtivaMenu = SecaoMenuLateral.Cotacoes;
+        mensagemErroCotacao = null;
+        cotacoes = await CotacoesService.ObterCotacoesAsync();
+    }
+
+    private void VoltarMenuPrincipal()
+    {
+        secaoAtivaMenu = SecaoMenuLateral.Principal;
+    }
+
+    // Metodos de Estimativa
+    private void AoPressionarEnterBuscaEstimativa(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            PesquisarPedidoParaEstimativa();
+    }
+
+    private void PesquisarPedidoParaEstimativa()
+    {
+        mensagemBuscaEstimativa = null;
+        pedidoEncontradoBusca = null;
+
+        string idTexto = termoBuscaEstimativa.Trim().TrimStart('#');
+        if (!int.TryParse(idTexto, out int idBuscado) || idBuscado <= 0)
+        {
+            mensagemBuscaEstimativa = "Informe um ID numérico válido.";
+            return;
+        }
+
+        var encontrado = pedidos.FirstOrDefault(p => p.Id == idBuscado);
+        if (encontrado == null)
+        {
+            mensagemBuscaEstimativa = $"Pedido #{idBuscado} não encontrado.";
+            return;
+        }
+
+        pedidoEncontradoBusca = encontrado;
+    }
+
     private async Task SolicitarEstimativa(PedidoDto pedido)
     {
-        if (pedido.EstimativaSolicitada || pedidosEmEnvio.Contains(pedido.Id))
+        if (pedido.PossuiEstimativaEmAndamento || pedidosEmEnvio.Contains(pedido.Id))
             return;
 
         pedidosEmEnvio.Add(pedido.Id);
@@ -240,9 +691,131 @@
         if (ok)
         {
             pedido.EstimativaSolicitada = true;
+            pedido.DataHoraEstimada = null;
+            pedido.EstimativaConferencia = null;
+            pedido.EstimativaConferenciaUser = null;
+
+            bool jaPassouSep = pedido.Status.Contains("Confer", StringComparison.OrdinalIgnoreCase) ||
+                               pedido.Status.Contains("Exped", StringComparison.OrdinalIgnoreCase);
+
+            pedido.EstimativaPendenteSeparacao = !jaPassouSep;
+            pedido.EstimativaPendenteConferencia = jaPassouSep;
+
+            pedidoEncontradoBusca = null;
+            termoBuscaEstimativa = string.Empty;
+        }
+        else
+        {
+            mensagemBuscaEstimativa = "Não foi possível solicitar a estimativa. Tente novamente.";
         }
 
         pedidosEmEnvio.Remove(pedido.Id);
+    }
+
+    // Metodos de Cotacao
+    private async Task AoPressionarEnterProdutoCotacao(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await PesquisarProdutosCotacaoAsync();
+    }
+
+    private async Task PesquisarProdutosCotacaoAsync()
+    {
+        mensagemErroCotacao = null;
+        produtosEncontradosCotacao = await CotacoesService.BuscarProdutosAsync(termoBuscaProdutoCotacao);
+
+        if (!produtosEncontradosCotacao.Any() && !string.IsNullOrWhiteSpace(termoBuscaProdutoCotacao))
+        {
+            // Permite adicionar como SKU avulso caso nao exista no catalogo
+            produtoSelecionadoCotacao = new ProdutoCatalogoDto
+            {
+                CodItem = termoBuscaProdutoCotacao.Trim().ToUpper(),
+                Nome = termoBuscaProdutoCotacao.Trim()
+            };
+            qtdItemCotacao = 1;
+        }
+    }
+
+    private void SelecionarProdutoParaCotacao(ProdutoCatalogoDto produto)
+    {
+        produtoSelecionadoCotacao = produto;
+        qtdItemCotacao = 1;
+        produtosEncontradosCotacao.Clear();
+        termoBuscaProdutoCotacao = string.Empty;
+    }
+
+    private void AdicionarItemListaCotacao()
+    {
+        if (produtoSelecionadoCotacao == null || qtdItemCotacao <= 0)
+            return;
+
+        var existente = itensNovaCotacao.FirstOrDefault(i =>
+            i.CodItem.Equals(produtoSelecionadoCotacao.CodItem, StringComparison.OrdinalIgnoreCase));
+
+        if (existente != null)
+        {
+            existente.Quantidade += qtdItemCotacao;
+        }
+        else
+        {
+            itensNovaCotacao.Add(new ItemCotacaoDto
+            {
+                CodItem = produtoSelecionadoCotacao.CodItem,
+                Nome = produtoSelecionadoCotacao.Nome,
+                Quantidade = qtdItemCotacao
+            });
+        }
+
+        produtoSelecionadoCotacao = null;
+        qtdItemCotacao = 1;
+    }
+
+    private void RemoverItemListaCotacao(ItemCotacaoDto item)
+    {
+        itensNovaCotacao.Remove(item);
+    }
+
+    private async Task EnviarSolicitacaoCotacaoAsync()
+    {
+        mensagemErroCotacao = null;
+
+        if (string.IsNullOrWhiteSpace(cotacaoCliente))
+        {
+            mensagemErroCotacao = "Informe o nome do cliente.";
+            return;
+        }
+
+        if (!itensNovaCotacao.Any())
+        {
+            mensagemErroCotacao = "Adicione pelo menos um produto.";
+            return;
+        }
+
+        enviandoCotacao = true;
+
+        var request = new NovaCotacaoRequestDto
+        {
+            Cliente = cotacaoCliente.Trim(),
+            Observacao = string.IsNullOrWhiteSpace(cotacaoObservacao) ? null : cotacaoObservacao.Trim(),
+            Solicitante = string.IsNullOrWhiteSpace(Sessao.NomeUsuario) ? "Comercial" : Sessao.NomeUsuario,
+            Itens = itensNovaCotacao.ToList()
+        };
+
+        var (sucesso, erro) = await CotacoesService.CriarCotacaoAsync(request);
+        if (sucesso)
+        {
+            cotacaoCliente = string.Empty;
+            cotacaoObservacao = string.Empty;
+            itensNovaCotacao.Clear();
+            produtoSelecionadoCotacao = null;
+            cotacoes = await CotacoesService.ObterCotacoesAsync();
+        }
+        else
+        {
+            mensagemErroCotacao = erro ?? "Erro ao enviar cotação.";
+        }
+
+        enviandoCotacao = false;
     }
 
     private void LimparBusca()

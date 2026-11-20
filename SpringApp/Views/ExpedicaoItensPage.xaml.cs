@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using SpringApp.Helpers;
 using SpringApp.Models;
 using SpringApp.Services;
 
@@ -144,7 +145,6 @@ public partial class ExpedicaoItensPage : ContentPage
 
             if (pedidoAtualizado?.VolumesPedidos != null && pedidoAtualizado.VolumesPedidos.Any())
             {
-                // Mantém a lista do lote sincronizada com os volumes vindos do banco
                 p.VolumesPedidos = pedidoAtualizado.VolumesPedidos;
 
                 foreach (var vol in pedidoAtualizado.VolumesPedidos)
@@ -216,7 +216,6 @@ public partial class ExpedicaoItensPage : ContentPage
             {
                 volumeEncontrado.Bipado = true;
 
-                // Sincroniza o estado bipado no DTO do pedido em memória
                 var pedidoDono = _pedidosLote.FirstOrDefault(p => p.IdPedido == volumeEncontrado.PedidoId);
                 var dto = pedidoDono?.VolumesPedidos?.FirstOrDefault(v => v.CodigoVolume.Equals(codigo, StringComparison.OrdinalIgnoreCase));
                 if (dto != null) dto.BipadoExpedicao = true;
@@ -279,7 +278,15 @@ public partial class ExpedicaoItensPage : ContentPage
         _bloqueioFoco = true;
         try
         {
-            bool confirm = await DisplayAlert("Colocar em Espera", "Deseja pausar esta expedição e manter os volumes já bipados salvos?", "Sim, Aguardar", "Não");
+            string? motivo = await JustificativaHelper.SolicitarJustificativaAsync(this, "Colocar em Espera");
+            if (string.IsNullOrWhiteSpace(motivo)) return;
+
+            bool confirm = await DisplayAlert(
+                "Colocar em Espera",
+                $"Motivo: {motivo}\nDeseja pausar esta expedição e manter os volumes já bipados salvos?",
+                "Sim, Aguardar",
+                "Não");
+
             if (confirm)
             {
                 int errosParaEnviar = _errosEvitados;
@@ -295,7 +302,7 @@ public partial class ExpedicaoItensPage : ContentPage
                         }
                     }
 
-                    await _pedidoService.PausarPedidoAsync(p, "Expedição", _usuarioLogado, errosParaEnviar);
+                    await _pedidoService.PausarPedidoAsync(p, "Expedição", _usuarioLogado, errosParaEnviar, motivo);
                     errosParaEnviar = 0;
                 }
 
@@ -315,12 +322,20 @@ public partial class ExpedicaoItensPage : ContentPage
         _bloqueioFoco = true;
         try
         {
-            bool confirm = await DisplayAlert("Atenção", "Deseja sair da expedição e cancelar o progresso atual?", "Sim", "Não");
+            string? motivo = await JustificativaHelper.SolicitarJustificativaAsync(this, "Cancelar Progresso");
+            if (string.IsNullOrWhiteSpace(motivo)) return;
+
+            bool confirm = await DisplayAlert(
+                "Atenção",
+                $"Motivo: {motivo}\nDeseja sair da expedição e cancelar o progresso atual?",
+                "Sim",
+                "Não");
+
             if (confirm)
             {
                 foreach (var p in _pedidosLote)
                 {
-                    await _pedidoService.ReverterEtapaAsync(p.IdPedido);
+                    await _pedidoService.ReverterEtapaAsync(p.IdPedido, motivo, _usuarioLogado);
                 }
                 await Navigation.PopAsync();
                 return;

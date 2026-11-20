@@ -11,7 +11,9 @@ public partial class MainPage : ContentPage
     private List<Pedido> _pedidosEmEspera = new();
     private List<Pedido> _pedidosAtivos = new();
 
-    private Pedido _pedidoSendoEstimado;
+    // Evita que duas buscas na API rodem ao mesmo tempo
+    private bool _carregandoPedidos;
+
     private string _termoPesquisadoAtual = string.Empty;
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
@@ -21,6 +23,7 @@ public partial class MainPage : ContentPage
         _pedidoService = pedidoService;
         BindingContext = this;
 
+        // Le o perfil salvo no login para saber quais abas mostrar
         string matriculaSalva = Preferences.Get("MatriculaLogada", "3");
         if (!int.TryParse(matriculaSalva, out _perfilLogado))
             _perfilLogado = 3;
@@ -28,12 +31,14 @@ public partial class MainPage : ContentPage
         AplicarRegrasDeAcessoPorPerfil();
     }
 
+    // Carrega os pedidos automaticamente sempre que esta tela aparece
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        await CarregarPedidosAsync();
+        await CarregarPedidosAsync(viaPullToRefresh: false);
     }
 
+    // Define quais abas ficam visiveis de acordo com o cargo do usuario
     private void AplicarRegrasDeAcessoPorPerfil()
     {
         if (_perfilLogado == 1)
@@ -62,6 +67,39 @@ public partial class MainPage : ContentPage
         }
     }
 
+    // Abre o menu lateral expansivel (3 barras)
+    private void OnMenuExpansivelClicked(object sender, EventArgs e)
+    {
+        OverlayMenuLateral.IsVisible = true;
+    }
+
+    // Fecha o menu lateral pelo botao X
+    private void OnFecharMenuLateralClicked(object sender, EventArgs e)
+    {
+        OverlayMenuLateral.IsVisible = false;
+    }
+
+    // Fecha o menu lateral ao tocar fora dele
+    private void OnFecharMenuLateralTapped(object sender, TappedEventArgs e)
+    {
+        OverlayMenuLateral.IsVisible = false;
+    }
+
+    // Abre a tela dedicada de Estimativas ao clicar no card do menu lateral
+    private async void OnCardEstimativasMenuTapped(object sender, TappedEventArgs e)
+    {
+        OverlayMenuLateral.IsVisible = false;
+        await Navigation.PushAsync(new EstimativasPage(_pedidoService, _perfilLogado));
+    }
+
+    // Abre a tela dedicada de Cotacoes ao clicar no card do menu lateral
+    private async void OnCardCotacoesMenuTapped(object sender, TappedEventArgs e)
+    {
+        OverlayMenuLateral.IsVisible = false;
+        await Navigation.PushAsync(new CotacoesPage(_pedidoService));
+    }
+
+    // Abre o menu do usuario com opcao de relatorio (supervisor) ou sair
     private async void OnPerfilClicked(object sender, EventArgs e)
     {
         string nomePerfil = _perfilLogado switch
@@ -99,38 +137,106 @@ public partial class MainPage : ContentPage
         }
     }
 
-    private async void OnSincronizarClicked(object sender, EventArgs e)
+    // Executado quando o usuario puxa a lista de pedidos para baixo
+    private async void OnPedidosRefreshing(object sender, EventArgs e)
     {
-        await ExecutarComLoadingAsync(SincronizarBtn, "Buscando...", async () =>
-        {
-            await CarregarPedidosAsync();
-        });
+        await CarregarPedidosAsync(viaPullToRefresh: true);
     }
 
-    private async Task CarregarPedidosAsync()
+    // Busca os pedidos e cotacoes na API e atualiza listas e contadores do menu
+    private async Task CarregarPedidosAsync(bool viaPullToRefresh = false)
     {
-        ExibirSkeleton(true);
+        if (_carregandoPedidos)
+        {
+            if (viaPullToRefresh)
+                PedidosRefreshView.IsRefreshing = false;
+            return;
+        }
+
+        _carregandoPedidos = true;
+
+        if (!viaPullToRefresh)
+            ExibirSkeleton(true);
 
         PesquisaExpedicaoBar.Text = string.Empty;
 
-        _pedidosAtivos = await _pedidoService.ObterPorStatusAsync(_statusAtualFiltro);
-        PedidosCollectionView.ItemsSource = _pedidosAtivos;
+        try
+        {
+            var todosPedidos = await _pedidoService.GetPedidosAsync();
+            var cotacoesPendentes = await _pedidoService.GetCotacoesPendentesAsync();
 
-        await CarregarPedidosEmEsperaAsync();
+            BannerConexao.IsVisible = false;
 
-        ExibirSkeleton(false);
+            _pedidosAtivos = todosPedidos
+                .Where(p => !p.EmEspera && string.Equals(p.Status, _statusAtualFiltro, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            PedidosCollectionView.ItemsSource = _pedidosAtivos;
+            AtualizarPedidosEmEspera(todosPedidos);
+            AtualizarPendenciasMenuLateral(todosPedidos, cotacoesPendentes.Count);
+        }
+        catch (TaskCanceledException)
+        {
+            LabelErroConexao.Text = "Tempo limite esgotado ao conectar na API. Puxe para baixo para tentar novamente.";
+            BannerConexao.IsVisible = true;
+        }
+        catch (HttpRequestException)
+        {
+            LabelErroConexao.Text = "Falha de conexão com a API. Verifique a rede e puxe para baixo.";
+            BannerConexao.IsVisible = true;
+        }
+        catch (Exception)
+        {
+            LabelErroConexao.Text = "Não foi possível atualizar os pedidos no momento.";
+            BannerConexao.IsVisible = true;
+        }
+        finally
+        {
+            ExibirSkeleton(false);
+            PedidosRefreshView.IsRefreshing = false;
+            _carregandoPedidos = false;
+        }
+    }
+
+    // Atualiza o contador das 3 barras e dos cards Estimativas e Cotacoes no menu lateral
+    private void AtualizarPendenciasMenuLateral(List<Pedido> todosPedidos, int totalCotacoesPendentes)
+    {
+        int totalEstimativas = todosPedidos.Count(p =>
+        {
+            bool emExecucao = p.Status.Contains("Em Separa", StringComparison.OrdinalIgnoreCase) ||
+                              p.Status.Contains("Em Confer", StringComparison.OrdinalIgnoreCase);
+
+            if (emExecucao) return false;
+
+            if (_perfilLogado == 1)
+                return p.EstimativaPendenteSeparacao;
+
+            if (_perfilLogado == 2)
+                return p.EstimativaPendenteConferencia;
+
+            return p.EstimativaPendenteSeparacao || p.EstimativaPendenteConferencia;
+        });
+
+        int totalGeral = totalEstimativas + totalCotacoesPendentes;
+
+        BadgeMenuLabel.Text = totalGeral.ToString();
+        BadgeMenuContainer.IsVisible = totalGeral > 0;
+
+        ContadorEstimativasMenuLabel.Text = totalEstimativas.ToString();
+        BadgeCardEstimativas.IsVisible = totalEstimativas > 0;
+
+        ContadorCotacoesMenuLabel.Text = totalCotacoesPendentes.ToString();
+        BadgeCardCotacoes.IsVisible = totalCotacoesPendentes > 0;
     }
 
     private void ExibirSkeleton(bool visivel)
     {
         SkeletonLoadingView.IsVisible = visivel;
-        PedidosCollectionView.IsVisible = !visivel;
+        PedidosRefreshView.IsVisible = !visivel;
     }
 
-    private async Task CarregarPedidosEmEsperaAsync()
+    private void AtualizarPedidosEmEspera(List<Pedido> todosPedidos)
     {
-        var todosPedidos = await _pedidoService.GetPedidosAsync();
-
         string etapaFiltro = _statusAtualFiltro switch
         {
             "Aguardando" => "Separação",
@@ -187,13 +293,10 @@ public partial class MainPage : ContentPage
 
             PesquisaExpedicaoBar.IsVisible = status == "Aguardando Expediçao";
 
-            await CarregarPedidosAsync();
+            await CarregarPedidosAsync(viaPullToRefresh: false);
         }
     }
 
-    // ====================================================================
-    // LÓGICA DE PESQUISA SIMPLIFICADA (EXCLUSÃO DE LOTE)
-    // ====================================================================
     private async void OnPesquisaExpedicaoPesquisar(object sender, EventArgs e)
     {
         string termo = PesquisaExpedicaoBar.Text?.Trim() ?? "";
@@ -225,7 +328,6 @@ public partial class MainPage : ContentPage
         }
     }
 
-    // --- Ações do Pop-Up de Pesquisa do Cliente ---
     private void OnOpcaoPesquisaApenasExpedicaoClicked(object sender, EventArgs e)
     {
         OverlayPesquisaCliente.IsVisible = false;
@@ -280,56 +382,6 @@ public partial class MainPage : ContentPage
             {
                 item.Pill.BackgroundColor = Colors.Transparent;
             }
-        }
-    }
-
-    private void OnEnviarEstimativaSupervisorClicked(object sender, EventArgs e)
-    {
-        if (sender is Button button && button.CommandParameter is Pedido pedido)
-        {
-            _pedidoSendoEstimado = pedido;
-
-            LabelPedidoEstimativa.Text = $"Pedido #{pedido.IdPedido:D4} - {pedido.Cliente}";
-            EstimativaDatePicker.Date = DateTime.Today;
-            EstimativaTimePicker.Time = DateTime.Now.TimeOfDay;
-
-            OverlayEstimativa.IsVisible = true;
-        }
-    }
-
-    private void OnCancelarEstimativaClicked(object sender, EventArgs e)
-    {
-        OverlayEstimativa.IsVisible = false;
-        _pedidoSendoEstimado = null;
-    }
-
-    private async void OnConfirmarEstimativaClicked(object sender, EventArgs e)
-    {
-        if (_pedidoSendoEstimado != null)
-        {
-            DateTime data = Convert.ToDateTime(EstimativaDatePicker.Date);
-            string dataFormatada = $"{data.Day:00}/{data.Month:00}/{data.Year}";
-
-            string horaBruta = EstimativaTimePicker.Time.ToString();
-            string horaFormatada = horaBruta.Length >= 5 ? horaBruta.Substring(0, 5) : horaBruta;
-
-            string dataHoraFinal = $"{dataFormatada} {horaFormatada}";
-
-            OverlayEstimativa.IsVisible = false;
-
-            var (sucesso, mensagem) = await _pedidoService.EnviarEstimativaAsync(_pedidoSendoEstimado.IdPedido, dataHoraFinal);
-
-            if (sucesso)
-            {
-                await DisplayAlert("Sucesso", "Data e hora estimada enviadas com sucesso ao comercial!", "OK");
-                await CarregarPedidosAsync();
-            }
-            else
-            {
-                await DisplayAlert("Erro", $"Falha ao enviar estimativa: {mensagem}", "OK");
-            }
-
-            _pedidoSendoEstimado = null;
         }
     }
 

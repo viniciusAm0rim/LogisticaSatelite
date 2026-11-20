@@ -45,6 +45,7 @@ namespace LogisticaSatelite.Api.Controllers
                     p.SepUser == operador ||
                     p.ConfUser == operador ||
                     p.ExpUser == operador ||
+                    p.CancelUser == operador ||
                     p.HistoricoPausas.Any(h => h.OperadorPausa == operador || h.OperadorRetomada == operador));
             }
 
@@ -125,6 +126,7 @@ namespace LogisticaSatelite.Api.Controllers
                     p.SepUser == operador ||
                     p.ConfUser == operador ||
                     p.ExpUser == operador ||
+                    p.CancelUser == operador ||
                     p.HistoricoPausas.Any(h => h.OperadorPausa == operador || h.OperadorRetomada == operador));
             }
 
@@ -132,7 +134,7 @@ namespace LogisticaSatelite.Api.Controllers
             var culturaBr = new CultureInfo("pt-BR");
             var csv = new StringBuilder();
 
-            csv.AppendLine("ID Pedido;Cliente;Status;Sep User;Conf User;Exp User;Hora Inicio Separacao;Hora Fim Separacao;Hora Inicio Conferencia;Hora Fim Conferencia;Data Expedicao;Erros Evitados;Qtd Pausas;Tempo Pausado (min);Historico Pausas e Retomadas;Tempo Medio (min)");
+            csv.AppendLine("ID Pedido;Cliente;Status;Sep User;Conf User;Exp User;Hora Inicio Separacao;Hora Fim Separacao;Hora Inicio Conferencia;Hora Fim Conferencia;Data Expedicao;Data Cancelamento;Operador Cancelamento;Motivo Cancelamento;Erros Evitados;Qtd Pausas;Tempo Pausado (min);Historico Pausas e Justificativas;Tempo Medio (min)");
 
             foreach (var p in pedidos)
             {
@@ -150,8 +152,13 @@ namespace LogisticaSatelite.Api.Controllers
                     {
                         DateTime fimRef = h.DataHoraRetomada ?? DateTime.Now;
                         minutosPausados += Math.Max(0, (fimRef - h.DataHoraPausa).TotalMinutes);
-                        string retomadaStr = h.DataHoraRetomada.HasValue ? $"Retomado {h.DataHoraRetomada.Value:HH:mm:ss} ({h.OperadorRetomada})" : "Ainda em espera";
-                        eventosFormatados.Add($"[{h.Etapa}] Pausa {h.DataHoraPausa:HH:mm:ss} ({h.OperadorPausa}) -> {retomadaStr}");
+
+                        string motivoStr = string.IsNullOrWhiteSpace(h.Motivo) ? "Não informado" : h.Motivo.Replace(";", ",");
+                        string retomadaStr = h.DataHoraRetomada.HasValue
+                            ? $"Retomado {h.DataHoraRetomada.Value:HH:mm:ss} ({h.OperadorRetomada})"
+                            : "Ainda em espera";
+
+                        eventosFormatados.Add($"[{h.Etapa}] {h.DataHoraPausa:HH:mm:ss} ({h.OperadorPausa}) - Motivo: {motivoStr} -> {retomadaStr}");
                     }
                     detalhesPausas = string.Join(" | ", eventosFormatados);
                 }
@@ -165,8 +172,11 @@ namespace LogisticaSatelite.Api.Controllers
                 string confInicio = p.ConfInicioData?.ToString("yyyy-MM-dd HH:mm:ss", culturaBr) ?? "-";
                 string confFim = p.ConfFimData?.ToString("yyyy-MM-dd HH:mm:ss", culturaBr) ?? "-";
                 string expFim = p.ExpFimData?.ToString("yyyy-MM-dd HH:mm:ss", culturaBr) ?? "-";
+                string cancelData = p.CancelData?.ToString("yyyy-MM-dd HH:mm:ss", culturaBr) ?? "-";
+                string cancelUser = string.IsNullOrWhiteSpace(p.CancelUser) ? "-" : p.CancelUser;
+                string motivoCancel = string.IsNullOrWhiteSpace(p.MotivoCancelamento) ? "-" : p.MotivoCancelamento.Replace(";", ",");
 
-                csv.AppendLine($"{p.Id};{p.Destinatario};{statusExibicao};{p.SepUser ?? "-"};{p.ConfUser ?? "-"};{p.ExpUser ?? "-"};{sepInicio};{sepFim};{confInicio};{confFim};{expFim};{p.ErrosEvitados};{qtdPausas};{minutosPausados.ToString("N2", culturaBr)};{detalhesPausas};{tempoMedioCalculado.ToString("N2", culturaBr)}");
+                csv.AppendLine($"{p.Id};{p.Destinatario};{statusExibicao};{p.SepUser ?? "-"};{p.ConfUser ?? "-"};{p.ExpUser ?? "-"};{sepInicio};{sepFim};{confInicio};{confFim};{expFim};{cancelData};{cancelUser};{motivoCancel};{p.ErrosEvitados};{qtdPausas};{minutosPausados.ToString("N2", culturaBr)};{detalhesPausas};{tempoMedioCalculado.ToString("N2", culturaBr)}");
             }
 
             byte[] bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.Globalization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using LogisticaSatelite.Api.Data;
 using LogisticaSatelite.Api.Models;
@@ -16,9 +17,7 @@ namespace LogisticaSatelite.Api.Controllers
             _context = context;
         }
 
-        // ==========================================
-        // LOCK PEDIDO
-        // ==========================================
+        // Registra qual operador assumiu o pedido
         [HttpPatch("{id}/lock")]
         public async Task<ActionResult<Pedido>> LockPedido(int id, [FromBody] EtapaRequestDTO dto)
         {
@@ -34,9 +33,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
-        // ==========================================
-        // GET PEDIDOS (COM FILTRO OPCIONAL DE STATUS)
-        // ==========================================
+        // Lista todos os pedidos ou filtra por status
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Pedido>>> GetPedidos([FromQuery] string? status)
         {
@@ -56,9 +53,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(listapedidos);
         }
 
-        // ==========================================
-        // GET PEDIDO POR ID
-        // ==========================================
+        // Busca os dados completos de um pedido pelo ID
         [HttpGet("{Id}")]
         public async Task<ActionResult<Pedido>> GetPedido(int Id)
         {
@@ -74,9 +69,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
-        // ==========================================
-        // CRIAR PEDIDO SIMPLIFICADO
-        // ==========================================
+        // Cria um novo pedido com itens e baixa estoque do picking
         [HttpPost]
         public async Task<ActionResult<Pedido>> CreatePedido([FromBody] CriarPedidoSimplificadoDTO dto)
         {
@@ -155,9 +148,7 @@ namespace LogisticaSatelite.Api.Controllers
             }
         }
 
-        // ==========================================
-        // FLUXO DE SEPARAÇÃO / CONFERÊNCIA / EXPEDIÇÃO
-        // ==========================================
+        // Inicia a separacao do pedido
         [HttpPatch("{id}/separar")]
         public async Task<ActionResult<Pedido>> IniciarSeparacao(int id, [FromBody] EtapaRequestDTO dto)
         {
@@ -180,6 +171,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
+        // Conclui a separacao e envia o pedido para aguardar conferencia
         [HttpPatch("{id}/AguardandoConfe")]
         public async Task<ActionResult<Pedido>> TerminoSeparacao(int id, [FromBody] EtapaRequestDTO dto)
         {
@@ -203,6 +195,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
+        // Inicia a conferencia do pedido
         [HttpPatch("{id}/EmConferencia")]
         public async Task<ActionResult<Pedido>> InicioConferencia(int id, [FromBody] EtapaRequestDTO dto)
         {
@@ -225,6 +218,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
+        // Conclui a conferencia e gera os codigos de volume
         [HttpPatch("{id}/ConcluirConferencia")]
         public async Task<ActionResult<Pedido>> ConcluirConferencia(int id, [FromBody] EtapaRequestDTO dto)
         {
@@ -280,6 +274,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedidoAtualizado);
         }
 
+        // Marca o pedido como expedido
         [HttpPatch("{id}/Expedido")]
         public async Task<ActionResult<Pedido>> Expedido(int id, [FromBody] EtapaRequestDTO dto)
         {
@@ -304,9 +299,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
-        // ==========================================
-        // COLOCAR PEDIDO EM ESPERA (PAUSA)
-        // ==========================================
+        // Coloca o pedido em pausa com justificativa e salva o progresso das bipagens
         [HttpPatch("{id}/pausar")]
         public async Task<ActionResult<Pedido>> PausarPedido(int id, [FromBody] PausarPedidoDTO dto)
         {
@@ -320,6 +313,7 @@ namespace LogisticaSatelite.Api.Controllers
 
             DateTime agora = DateTime.Now;
             string usuarioAtual = string.IsNullOrWhiteSpace(dto.Usuario) ? "Operador" : dto.Usuario;
+            string motivoFinal = string.IsNullOrWhiteSpace(dto.Motivo) ? "Não informado" : dto.Motivo.Trim();
 
             pedido.EmEspera = true;
             pedido.EtapaPausada = dto.Etapa;
@@ -334,7 +328,6 @@ namespace LogisticaSatelite.Api.Controllers
                 pedido.ExpUser = usuarioAtual;
             }
 
-            // Salva as bipagens parciais dos itens (Separação e Conferência)
             if (dto.Itens != null && dto.Itens.Any())
             {
                 foreach (var itemDto in dto.Itens)
@@ -351,7 +344,6 @@ namespace LogisticaSatelite.Api.Controllers
                 }
             }
 
-            // Salva as bipagens parciais dos volumes (Expedição)
             if (dto.VolumesPedidos != null && dto.VolumesPedidos.Any())
             {
                 foreach (var volDto in dto.VolumesPedidos)
@@ -372,16 +364,15 @@ namespace LogisticaSatelite.Api.Controllers
                 PedidoId = pedido.Id,
                 Etapa = dto.Etapa,
                 OperadorPausa = usuarioAtual,
-                DataHoraPausa = agora
+                DataHoraPausa = agora,
+                Motivo = motivoFinal
             });
 
             await _context.SaveChangesAsync();
             return Ok(pedido);
         }
 
-        // ==========================================
-        // RETOMAR PEDIDO EM ESPERA
-        // ==========================================
+        // Retoma um pedido que estava pausado
         [HttpPatch("{id}/retomar")]
         public async Task<ActionResult<Pedido>> RetomarPedido(int id, [FromBody] EtapaRequestDTO dto)
         {
@@ -413,8 +404,10 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
+        // Reverte/cancela o progresso da etapa atual gravando o motivo para o relatorio
         [HttpPatch("{id}/reverter")]
-        public async Task<ActionResult<Pedido>> ReverterEtapa(int id)
+        [HttpPatch("{id}/cancelar")]
+        public async Task<ActionResult<Pedido>> ReverterEtapa(int id, [FromBody] CancelarPedidoDTO? dto = null)
         {
             var pedido = await _context.Pedidos
                 .Include(p => p.Itens)
@@ -424,15 +417,45 @@ namespace LogisticaSatelite.Api.Controllers
 
             if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
+            DateTime agora = DateTime.Now;
+            string usuarioAtual = string.IsNullOrWhiteSpace(dto?.Usuario) ? "Operador" : dto.Usuario.Trim();
+            string motivoFinal = string.IsNullOrWhiteSpace(dto?.Motivo) ? "Não informado" : dto.Motivo.Trim();
+
+            string etapaAtual = pedido.Status switch
+            {
+                "Em Separação" or "Em Separacao" => "Separação",
+                "Em Conferencia" => "Conferência",
+                "Em Expedição" or "Aguardando Expedição" or "Aguardando Expedicao" => "Expedição",
+                _ => pedido.Status
+            };
+
             var pausaAberta = pedido.HistoricoPausas
                 .OrderByDescending(h => h.Id)
                 .FirstOrDefault(h => h.DataHoraRetomada == null);
 
             if (pausaAberta != null)
             {
-                pausaAberta.OperadorRetomada = "Cancelado";
-                pausaAberta.DataHoraRetomada = DateTime.Now;
+                pausaAberta.OperadorRetomada = $"{usuarioAtual} (Cancelado: {motivoFinal})";
+                pausaAberta.DataHoraRetomada = agora;
             }
+            else
+            {
+                // Registra o evento de cancelamento com motivo no historico para auditoria
+                pedido.HistoricoPausas.Add(new RegistroPausa
+                {
+                    PedidoId = pedido.Id,
+                    Etapa = $"{etapaAtual} (Cancelamento)",
+                    OperadorPausa = usuarioAtual,
+                    DataHoraPausa = agora,
+                    Motivo = motivoFinal,
+                    OperadorRetomada = usuarioAtual,
+                    DataHoraRetomada = agora
+                });
+            }
+
+            pedido.CancelData = agora;
+            pedido.CancelUser = usuarioAtual;
+            pedido.MotivoCancelamento = motivoFinal;
 
             pedido.EmEspera = false;
             pedido.EtapaPausada = null;
@@ -473,9 +496,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
-        // ==========================================
-        // 1. SOLICITAÇÃO DE ESTIMATIVA (WebComercial -> API)
-        // ==========================================
+        // Registra a solicitacao de estimativa feita pelo painel comercial
         [HttpPost("{id}/solicitar-estimativa")]
         [HttpPatch("{id}/solicitar-estimativa")]
         [HttpPut("{id}/solicitar-estimativa")]
@@ -491,14 +512,32 @@ namespace LogisticaSatelite.Api.Controllers
 
             pedido.EstimativaSolicitada = true;
             pedido.SolicitanteEstimativa = "Comercial";
-            await _context.SaveChangesAsync();
 
+            pedido.DataHoraEstimada = null;
+            pedido.EstimativaSeparacao = null;
+            pedido.EstimativaSeparacaoUser = null;
+            pedido.EstimativaConferencia = null;
+            pedido.EstimativaConferenciaUser = null;
+
+            bool jaPassouSeparacao = pedido.Status.Contains("Confer", StringComparison.OrdinalIgnoreCase) ||
+                                     pedido.Status.Contains("Exped", StringComparison.OrdinalIgnoreCase);
+
+            if (jaPassouSeparacao)
+            {
+                pedido.EstimativaPendenteSeparacao = false;
+                pedido.EstimativaPendenteConferencia = true;
+            }
+            else
+            {
+                pedido.EstimativaPendenteSeparacao = true;
+                pedido.EstimativaPendenteConferencia = false;
+            }
+
+            await _context.SaveChangesAsync();
             return Ok(pedido);
         }
 
-        // ==========================================
-        // 2. RESPOSTA DE ESTIMATIVA (SpringApp -> API)
-        // ==========================================
+        // Grava a resposta da estimativa por etapa (1 Separador -> 2 Conferente) com assinatura
         [HttpPost("{id}/estimativa")]
         [HttpPatch("{id}/estimativa")]
         [HttpPut("{id}/estimativa")]
@@ -534,7 +573,7 @@ namespace LogisticaSatelite.Api.Controllers
 
             if (pedidoIdFinal <= 0)
             {
-                return BadRequest(new { message = "O ID do pedido não foi fornecido na URL nem no corpo da requisição." });
+                return BadRequest(new { message = "O ID do pedido não foi fornecido." });
             }
 
             var pedido = await _context.Pedidos.FindAsync(pedidoIdFinal);
@@ -548,17 +587,46 @@ namespace LogisticaSatelite.Api.Controllers
                 return BadRequest(new { message = "A data/hora estimada é obrigatória." });
             }
 
-            pedido.DataHoraEstimada = dataEstimada;
-            pedido.EstimativaSolicitada = false;
-            await _context.SaveChangesAsync();
+            string usuarioAssinatura = string.IsNullOrWhiteSpace(dtoBody?.Usuario) ? "Operador" : dtoBody.Usuario;
+            string etapaInformada = dtoBody?.Etapa ?? string.Empty;
 
+            bool respondeSeparacao = etapaInformada.Equals("Separacao", StringComparison.OrdinalIgnoreCase) ||
+                                     etapaInformada.Equals("Separação", StringComparison.OrdinalIgnoreCase) ||
+                                     (string.IsNullOrEmpty(etapaInformada) && pedido.EstimativaPendenteSeparacao);
+
+            if (respondeSeparacao)
+            {
+                pedido.EstimativaSeparacao = dataEstimada;
+                pedido.EstimativaSeparacaoUser = usuarioAssinatura;
+                pedido.EstimativaPendenteSeparacao = false;
+                pedido.EstimativaPendenteConferencia = true;
+                pedido.DataHoraEstimada = null;
+            }
+            else
+            {
+                if (!string.IsNullOrWhiteSpace(pedido.EstimativaSeparacao) &&
+                    DateTime.TryParseExact(pedido.EstimativaSeparacao.Trim(), "dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dtSep) &&
+                    DateTime.TryParseExact(dataEstimada.Trim(), "dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dtConf))
+                {
+                    if (dtConf < dtSep)
+                    {
+                        return BadRequest(new { message = $"A previsão da conferência não pode ser anterior à da separação ({pedido.EstimativaSeparacao})." });
+                    }
+                }
+
+                pedido.EstimativaConferencia = dataEstimada;
+                pedido.EstimativaConferenciaUser = usuarioAssinatura;
+                pedido.EstimativaPendenteSeparacao = false;
+                pedido.EstimativaPendenteConferencia = false;
+                pedido.EstimativaSolicitada = false;
+                pedido.DataHoraEstimada = dataEstimada;
+            }
+
+            await _context.SaveChangesAsync();
             return Ok(pedido);
         }
     }
 
-    // ==========================================
-    // DTOs AUXILIARES
-    // ==========================================
     public class EtapaRequestDTO
     {
         public string? Usuario { get; set; }
@@ -570,9 +638,16 @@ namespace LogisticaSatelite.Api.Controllers
     {
         public string Etapa { get; set; } = string.Empty;
         public string? Usuario { get; set; }
+        public string? Motivo { get; set; }
         public int ErrosEvitados { get; set; }
         public List<ItemProgressoDTO>? Itens { get; set; }
         public List<VolumeProgressoDTO>? VolumesPedidos { get; set; }
+    }
+
+    public class CancelarPedidoDTO
+    {
+        public string? Usuario { get; set; }
+        public string? Motivo { get; set; }
     }
 
     public class ItemProgressoDTO
@@ -611,5 +686,7 @@ namespace LogisticaSatelite.Api.Controllers
         public string? DataHora { get; set; }
         public string? DataHoraEstimada { get; set; }
         public string? DataHoraEstimadaString { get; set; }
+        public string? Etapa { get; set; }
+        public string? Usuario { get; set; }
     }
 }

@@ -41,10 +41,13 @@ public class Pedido
     [JsonPropertyName("expInicioData")] public DateTime? ExpInicioData { get; set; }
     [JsonPropertyName("expFimData")] public DateTime? ExpFimData { get; set; }
 
-    // Registro da data/hora de cancelamento
     [JsonPropertyName("cancelData")] public DateTime? CancelData { get; set; }
 
-    // Controle de Espera / Pausa
+    [JsonPropertyName("cancelUser")] public string? CancelUser { get; set; }
+
+    [JsonPropertyName("motivoCancelamento")] public string? MotivoCancelamento { get; set; }
+
+    // Controle de espera e pausa
     [JsonPropertyName("emEspera")] public bool EmEspera { get; set; }
     [JsonPropertyName("etapaPausada")] public string EtapaPausada { get; set; }
     [JsonPropertyName("pausadoPor")] public string PausadoPor { get; set; }
@@ -88,7 +91,7 @@ public class Pedido
 
     [JsonIgnore] public bool IsExpanded { get; set; }
 
-    // Propriedades para o fluxo de Estimativa entre Comercial e Supervisor
+    // Propriedades gerais da estimativa
     [JsonPropertyName("estimativaSolicitada")]
     public bool EstimativaSolicitada { get; set; }
 
@@ -97,14 +100,67 @@ public class Pedido
 
     [JsonPropertyName("dataHoraEstimada")]
     public string DataHoraEstimada { get; set; }
+
+    // Controle das 2 etapas da estimativa (Separador -> Conferente)
+    [JsonPropertyName("estimativaPendenteSeparacao")]
+    public bool EstimativaPendenteSeparacao { get; set; }
+
+    [JsonPropertyName("estimativaSeparacao")]
+    public string EstimativaSeparacao { get; set; }
+
+    [JsonPropertyName("estimativaSeparacaoUser")]
+    public string EstimativaSeparacaoUser { get; set; }
+
+    [JsonPropertyName("estimativaPendenteConferencia")]
+    public bool EstimativaPendenteConferencia { get; set; }
+
+    [JsonPropertyName("estimativaConferencia")]
+    public string EstimativaConferencia { get; set; }
+
+    [JsonPropertyName("estimativaConferenciaUser")]
+    public string EstimativaConferenciaUser { get; set; }
+
+    // Resumo enxuto para os cards: mostra "Aguardando estimativa" ou o separador e horario estimado
+    [JsonIgnore]
+    public string DescricaoPendenciaEstimativa
+    {
+        get
+        {
+            if (EstimativaPendenteSeparacao)
+                return "Aguardando estimativa";
+
+            if (EstimativaPendenteConferencia)
+            {
+                if (string.IsNullOrWhiteSpace(EstimativaSeparacao))
+                    return "Aguardando estimativa";
+
+                string autor = string.IsNullOrWhiteSpace(EstimativaSeparacaoUser) ? "Separador" : EstimativaSeparacaoUser;
+                return $"{autor}: {EstimativaSeparacao}";
+            }
+
+            return "Aguardando estimativa";
+        }
+    }
 }
 
 public class RegistroPausa
 {
+    [JsonPropertyName("etapa")]
     public string Etapa { get; set; } = string.Empty;
+
+    [JsonPropertyName("operadorPausa")]
     public string OperadorPausa { get; set; } = string.Empty;
+
+    [JsonPropertyName("dataHoraPausa")]
     public DateTime DataHoraPausa { get; set; }
+
+    [JsonPropertyName("motivo")]
+    public string? Motivo { get; set; }
+
+    [JsonPropertyName("operadorRetomada")]
     public string? OperadorRetomada { get; set; }
+
+    [JsonPropertyName("dataHoraRetomada")]
     public DateTime? DataHoraRetomada { get; set; }
 }
 

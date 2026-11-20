@@ -83,6 +83,12 @@
 	  <MauiXaml Update="Views\ConferenciaItensPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
+	  <MauiXaml Update="Views\CotacoesPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\EstimativasPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
 	  <MauiXaml Update="Views\GestaoQualidadePage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>

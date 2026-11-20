@@ -16,5 +16,7 @@ namespace LogisticaSatelite.Api.Data
         public DbSet<VolumePedido> VolumesPedidos { get; set; } = null!;
         public DbSet<LogOperacional> LogsOperacionais { get; set; } = null!;
         public DbSet<RegistroPausa> RegistrosPausas { get; set; } = null!;
+        public DbSet<Cotacao> Cotacoes { get; set; } = null!;
+        public DbSet<ItemCotacao> ItensCotacoes { get; set; } = null!;
     }
 }

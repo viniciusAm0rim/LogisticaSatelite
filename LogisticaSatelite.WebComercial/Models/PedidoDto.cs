@@ -28,6 +28,32 @@ public class PedidoDto
     [JsonPropertyName("dataHoraEstimada")]
     public string? DataHoraEstimada { get; set; }
 
+    // Campos de controle das 2 etapas (o comercial visualiza apenas o retorno do conferente)
+    [JsonPropertyName("estimativaPendenteSeparacao")]
+    public bool EstimativaPendenteSeparacao { get; set; }
+
+    [JsonPropertyName("estimativaPendenteConferencia")]
+    public bool EstimativaPendenteConferencia { get; set; }
+
+    [JsonPropertyName("estimativaConferencia")]
+    public string? EstimativaConferencia { get; set; }
+
+    [JsonPropertyName("estimativaConferenciaUser")]
+    public string? EstimativaConferenciaUser { get; set; }
+
+    // Retorna o horario final apenas quando o conferente ja respondeu
+    [JsonIgnore]
+    public string? EstimativaFinalConferente =>
+        !string.IsNullOrWhiteSpace(EstimativaConferencia)
+            ? EstimativaConferencia
+            : (!EstimativaSolicitada && !EstimativaPendenteSeparacao && !EstimativaPendenteConferencia && !string.IsNullOrWhiteSpace(DataHoraEstimada)
+                ? DataHoraEstimada
+                : null);
+
+    [JsonIgnore]
+    public bool PossuiEstimativaEmAndamento =>
+        EstimativaSolicitada || EstimativaPendenteSeparacao || EstimativaPendenteConferencia;
+
     [JsonPropertyName("emEspera")]
     public bool EmEspera { get; set; }
 

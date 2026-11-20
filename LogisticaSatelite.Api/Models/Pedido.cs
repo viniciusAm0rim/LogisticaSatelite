@@ -20,14 +20,14 @@ namespace LogisticaSatelite.Api.Models
         public DateTime? ExpInicioData { get; set; }
         public DateTime? ExpFimData { get; set; }
         public DateTime? CancelData { get; set; }
+        public string? CancelUser { get; set; }
+        public string? MotivoCancelamento { get; set; }
 
-        // Coluna única que já existe fisicamente no banco SQLite
+        // Coluna unica que ja existe fisicamente no banco SQLite
         public int ErrosEvitados { get; set; } = 0;
         public string? LockedBy { get; set; }
 
-        // ==========================================
-        // CONTROLE DE ESPERA / PAUSA
-        // ==========================================
+        // Controle de espera e pausa
         public bool EmEspera { get; set; } = false;
         public string? EtapaPausada { get; set; }
         public string? PausadoPor { get; set; }
@@ -35,12 +35,19 @@ namespace LogisticaSatelite.Api.Models
 
         public List<RegistroPausa> HistoricoPausas { get; set; } = new();
 
-        // ==========================================
-        // PROPRIEDADES DO FLUXO DE ESTIMATIVA
-        // ==========================================
+        // Propriedades gerais da estimativa
         public bool EstimativaSolicitada { get; set; } = false;
         public string? SolicitanteEstimativa { get; set; }
         public string? DataHoraEstimada { get; set; }
+
+        // Controle das 2 etapas da estimativa (Separador -> Conferente)
+        public bool EstimativaPendenteSeparacao { get; set; } = false;
+        public string? EstimativaSeparacao { get; set; }
+        public string? EstimativaSeparacaoUser { get; set; }
+
+        public bool EstimativaPendenteConferencia { get; set; } = false;
+        public string? EstimativaConferencia { get; set; }
+        public string? EstimativaConferenciaUser { get; set; }
 
         public List<VolumePedido> VolumesPedidos { get; set; } = new();
         public ICollection<ItemPedido> Itens { get; set; } = new List<ItemPedido>();
@@ -57,6 +64,7 @@ namespace LogisticaSatelite.Api.Models
         public string Etapa { get; set; } = string.Empty;
         public string OperadorPausa { get; set; } = string.Empty;
         public DateTime DataHoraPausa { get; set; }
+        public string? Motivo { get; set; }
         public string? OperadorRetomada { get; set; }
         public DateTime? DataHoraRetomada { get; set; }
     }

@@ -21,6 +21,12 @@ builder.Services.AddHttpClient<ProducaoPedidosService>(client =>
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
+builder.Services.AddHttpClient<ProducaoCotacoesService>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 builder.Services.AddHttpClient<ProducaoAdmService>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
@@ -30,6 +36,7 @@ builder.Services.AddHttpClient<ProducaoAdmService>(client =>
 // Serviços Mock (100% em memória, zero chamadas de rede)
 builder.Services.AddScoped<MockDataStore>();
 builder.Services.AddScoped<MockPedidosService>();
+builder.Services.AddScoped<MockCotacoesService>();
 builder.Services.AddScoped<MockAdmService>();
 
 // Resolução dinâmica da fonte de dados conforme o login ativo
@@ -39,6 +46,14 @@ builder.Services.AddScoped<IPedidosService>(sp =>
     return sessao.UsarMock
         ? sp.GetRequiredService<MockPedidosService>()
         : sp.GetRequiredService<ProducaoPedidosService>();
+});
+
+builder.Services.AddScoped<ICotacoesService>(sp =>
+{
+    var sessao = sp.GetRequiredService<SessaoStateService>();
+    return sessao.UsarMock
+        ? sp.GetRequiredService<MockCotacoesService>()
+        : sp.GetRequiredService<ProducaoCotacoesService>();
 });
 
 builder.Services.AddScoped<IAdmService>(sp =>

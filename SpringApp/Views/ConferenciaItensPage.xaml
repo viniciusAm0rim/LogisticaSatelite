@@ -11,7 +11,7 @@
             <TapGestureRecognizer Tapped="OnTelaTapped" />
         </Grid.GestureRecognizers>
 
-        <!-- Campo ativo para receber foco do leitor, oculto atrás do card de título -->
+        <!-- Campo oculto que mantem o foco do leitor de codigo de barras -->
         <Entry x:Name="LeitorBluetoothEntry"
                Grid.Row="0"
                ZIndex="-1"
@@ -36,7 +36,37 @@
                     <Label x:Name="TituloPaginaLabel" Text="CONFERIR ITENS" FontSize="16" FontAttributes="Bold" TextColor="#0f172a" HorizontalTextAlignment="Center"/>
                 </Border>
 
-                <!-- Cabeçalho do Pedido -->
+                <!-- Card enxuto exibido quando ha estimativa pendente na conferencia -->
+                <Border x:Name="CardNotificacaoEstimativaConf"
+                        IsVisible="False"
+                        Stroke="#f59e0b"
+                        StrokeThickness="1.5"
+                        BackgroundColor="#fffbeb"
+                        Padding="14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="14"/>
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="*, Auto" ColumnSpacing="10">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                            <Label Text="ESTIMATIVA SOLICITADA" FontSize="11" FontAttributes="Bold" TextColor="#b45309"/>
+                            <Label x:Name="LabelAvisoSeparacaoNaConf" Text="Informar previsão" FontSize="12" FontAttributes="Bold" TextColor="#78350f"/>
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1"
+                                Text="Informar"
+                                Clicked="OnAbrirModalEstimativaConfClicked"
+                                BackgroundColor="#f59e0b"
+                                TextColor="White"
+                                FontAttributes="Bold"
+                                FontSize="12"
+                                HeightRequest="38"
+                                WidthRequest="90"
+                                CornerRadius="10"
+                                Padding="0"
+                                VerticalOptions="Center"/>
+                    </Grid>
+                </Border>
+
+                <!-- Cabecalho do pedido -->
                 <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="16">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="16"/>
@@ -54,7 +84,7 @@
                     </Grid>
                 </Border>
 
-                <!-- FASE 1: Bipagem de Itens (SKUs) -->
+                <!-- Bipagem de itens -->
                 <VerticalStackLayout x:Name="ContainerItens" IsVisible="True" Spacing="15">
                     <Border Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="16,12">
                         <Border.StrokeShape>
@@ -104,7 +134,7 @@
                     </CollectionView>
                 </VerticalStackLayout>
 
-                <!-- FASE 2: Bipagem de Volumes -->
+                <!-- Bipagem de volumes -->
                 <VerticalStackLayout x:Name="ContainerVolumes" IsVisible="False" Spacing="15">
                     <Border Stroke="#fde68a" StrokeThickness="2" BackgroundColor="#fef3c7" Padding="16">
                         <Border.StrokeShape>
@@ -161,6 +191,30 @@
         <Grid Grid.Row="1" ColumnDefinitions="*, *" ColumnSpacing="12" BackgroundColor="#f8fafc" Padding="20,10">
             <Button Grid.Column="0" Text="CANCELAR" Clicked="OnCancelarClicked" BackgroundColor="#fee2e2" TextColor="#ef4444" FontAttributes="Bold" HeightRequest="48" CornerRadius="14"/>
             <Button Grid.Column="1" Text="AGUARDAR" Clicked="OnAguardarClicked" BackgroundColor="#fef3c7" TextColor="#b45309" FontAttributes="Bold" HeightRequest="48" CornerRadius="14"/>
+        </Grid>
+
+        <!-- Modal sobreposto para o conferente informar data e hora final -->
+        <Grid x:Name="OverlayEstimativaConf" Grid.RowSpan="2" BackgroundColor="#80000000" IsVisible="False" Padding="20">
+            <Border BackgroundColor="White" Padding="22" VerticalOptions="Center" HorizontalOptions="Center" WidthRequest="320">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16"/>
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="Previsão da Conferência" FontAttributes="Bold" FontSize="17" TextColor="#0f172a" HorizontalOptions="Center"/>
+                    <Label x:Name="LabelModalSeparadorConf" Text="" FontSize="13" TextColor="#1e40af" FontAttributes="Bold" HorizontalTextAlignment="Center"/>
+
+                    <Label Text="Data Estimada:" FontSize="12" FontAttributes="Bold" TextColor="#334155"/>
+                    <DatePicker x:Name="EstimativaConfDatePicker" Format="dd/MM/yyyy" BackgroundColor="#f8fafc" TextColor="#0f172a"/>
+
+                    <Label Text="Horário Estimado:" FontSize="12" FontAttributes="Bold" TextColor="#334155"/>
+                    <TimePicker x:Name="EstimativaConfTimePicker" Format="HH:mm" BackgroundColor="#f8fafc" TextColor="#0f172a"/>
+
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,12,0,0">
+                        <Button Grid.Column="0" Text="Cancelar" Clicked="OnCancelarModalEstimativaConfClicked" BackgroundColor="#ef4444" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42"/>
+                        <Button Grid.Column="1" Text="Confirmar" Clicked="OnConfirmarModalEstimativaConfClicked" BackgroundColor="#10b981" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
         </Grid>
     </Grid>
 </ContentPage>

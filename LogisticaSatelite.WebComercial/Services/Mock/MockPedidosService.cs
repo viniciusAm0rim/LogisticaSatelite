@@ -25,7 +25,17 @@ public class MockPedidosService : IPedidosService
             return Task.FromResult(false);
 
         pedido.EstimativaSolicitada = true;
-        pedido.SolicitanteEstimativa = "Comercialmock";
+        pedido.SolicitanteEstimativa = "Comercial";
+        pedido.DataHoraEstimada = null;
+        pedido.EstimativaConferencia = null;
+        pedido.EstimativaConferenciaUser = null;
+
+        bool jaPassouSeparacao = pedido.Status.Contains("Confer", StringComparison.OrdinalIgnoreCase) ||
+                                 pedido.Status.Contains("Exped", StringComparison.OrdinalIgnoreCase);
+
+        pedido.EstimativaPendenteSeparacao = !jaPassouSeparacao;
+        pedido.EstimativaPendenteConferencia = jaPassouSeparacao;
+
         return Task.FromResult(true);
     }
 }

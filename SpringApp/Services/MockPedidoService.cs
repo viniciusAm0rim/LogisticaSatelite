@@ -6,13 +6,28 @@ namespace SpringApp.Services;
 
 public class MockPedidoService : IPedidoService
 {
-    // Histórico acumulativo para registrar tentativas e cancelamentos em linhas separadas
     private static readonly List<Pedido> _historicoRelatorio = new List<Pedido>();
 
-    // Lista principal de pedidos do ambiente mock
+    private static readonly List<Cotacao> _cotacoesMock = new List<Cotacao>
+    {
+        new Cotacao
+        {
+            Id = 1,
+            Cliente = "AcquAmorim",
+            Observacao = "Caixa reforçada para transporte",
+            Solicitante = "Comercial (Web)",
+            DataSolicitacao = DateTime.Now.AddMinutes(-20),
+            Status = "Pendente",
+            Itens = new List<ItemCotacao>
+            {
+                new ItemCotacao { Id = 1, CodItem = "001", Nome = "Caixa Organizadora Plástica 30L", Quantidade = 4 },
+                new ItemCotacao { Id = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", Quantidade = 2 }
+            }
+        }
+    };
+
     private static readonly List<Pedido> _pedidosMock = new List<Pedido>
     {
-        // Pedido 101 - Aguardando
         new Pedido
         {
             IdPedido = 101,
@@ -22,17 +37,9 @@ public class MockPedidoService : IPedidoService
             CodTransportadora = "CTR-00",
             Status = "Aguardando",
             Volumes = 0,
-            SepUser = null,
-            SepInicioData = null,
-            SepFimData = null,
-            ConfUser = null,
-            ConfInicioData = null,
-            ConfFimData = null,
-            ExpUser = null,
-            ExpInicioData = null,
-            ExpFimData = null,
-            CancelData = null,
             EstimativaSolicitada = true,
+            EstimativaPendenteSeparacao = true,
+            EstimativaPendenteConferencia = false,
             SolicitanteEstimativa = "Comercial (Web)",
             DataHoraEstimada = "",
             Itens = new List<ItemPedido>
@@ -41,8 +48,6 @@ public class MockPedidoService : IPedidoService
                 new ItemPedido { ProdutoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", LocalPicking = "R2-A-05", Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0 }
             }
         },
-
-        // Pedido 102 - Aguardando
         new Pedido
         {
             IdPedido = 102,
@@ -52,16 +57,6 @@ public class MockPedidoService : IPedidoService
             CodTransportadora = "CTR-00",
             Status = "Aguardando",
             Volumes = 0,
-            SepUser = null,
-            SepInicioData = null,
-            SepFimData = null,
-            ConfUser = null,
-            ConfInicioData = null,
-            ConfFimData = null,
-            ExpUser = null,
-            ExpInicioData = null,
-            ExpFimData = null,
-            CancelData = null,
             EstimativaSolicitada = false,
             DataHoraEstimada = "11/10/2026 16:30",
             Itens = new List<ItemPedido>
@@ -69,8 +64,6 @@ public class MockPedidoService : IPedidoService
                 new ItemPedido { ProdutoId = 3, CodItem = "003", Nome = "Bobina Plástico Bolha 1,20m x 100m", LocalPicking = "R3-C-10", Quantidade = 2, BipagensSeparacao = 0, BipagensConferencia = 0 }
             }
         },
-
-        // Pedido 103 - Aguardando
         new Pedido
         {
             IdPedido = 103,
@@ -80,16 +73,6 @@ public class MockPedidoService : IPedidoService
             CodTransportadora = "CTR-99",
             Status = "Aguardando",
             Volumes = 0,
-            SepUser = null,
-            SepInicioData = null,
-            SepFimData = null,
-            ConfUser = null,
-            ConfInicioData = null,
-            ConfFimData = null,
-            ExpUser = null,
-            ExpInicioData = null,
-            ExpFimData = null,
-            CancelData = null,
             EstimativaSolicitada = false,
             DataHoraEstimada = "11/10/2026 18:00",
             Itens = new List<ItemPedido>
@@ -124,7 +107,6 @@ public class MockPedidoService : IPedidoService
     public async Task<List<Pedido>> ObterPorStatusAsync(string status)
     {
         await Task.Delay(150);
-        // Pedidos em espera ficam visíveis apenas no card superior dedicado até serem retomados
         return _pedidosMock
             .Where(p => !p.EmEspera && p.Status.Equals(status, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -240,16 +222,14 @@ public class MockPedidoService : IPedidoService
         return (true, "Sucesso");
     }
 
-    /// <summary>
-    /// Coloca o pedido em espera (pausa), preservando os itens/volumes já bipados e registrando o evento para o relatório.
-    /// </summary>
-    public async Task<(bool Sucesso, string Mensagem)> PausarPedidoAsync(Pedido pedido, string etapa, string usuario, int errosEvitados = 0)
+    public async Task<(bool Sucesso, string Mensagem)> PausarPedidoAsync(Pedido pedido, string etapa, string usuario, int errosEvitados = 0, string? motivo = null)
     {
         await Task.Delay(150);
         var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == pedido.IdPedido);
         if (mock == null) return (false, "Pedido não encontrado.");
 
         string usuarioAtual = ObterUsuarioLogado(usuario);
+        string motivoFinal = string.IsNullOrWhiteSpace(motivo) ? "Não informado" : motivo.Trim();
         DateTime agora = DateTime.Now;
 
         mock.EmEspera = true;
@@ -268,15 +248,13 @@ public class MockPedidoService : IPedidoService
         {
             Etapa = etapa,
             OperadorPausa = usuarioAtual,
-            DataHoraPausa = agora
+            DataHoraPausa = agora,
+            Motivo = motivoFinal
         });
 
         return (true, "Pedido colocado em espera.");
     }
 
-    /// <summary>
-    /// Retoma um pedido que estava em espera, registrando a retomada para o relatório e mantendo o progresso salvo.
-    /// </summary>
     public async Task<(bool Sucesso, string Mensagem)> RetomarPedidoAsync(int id, string usuario)
     {
         await Task.Delay(150);
@@ -300,29 +278,24 @@ public class MockPedidoService : IPedidoService
         return (true, "Pedido retomado.");
     }
 
-    /// <summary>
-    /// Método acionado pelo botão 'Cancelar' das páginas.
-    /// Registra a tentativa cancelada em uma linha isolada no relatório e reverte o pedido + itens lidos.
-    /// </summary>
-    public async Task<(bool Sucesso, string Mensagem)> ReverterEtapaAsync(int id)
+    public async Task<(bool Sucesso, string Mensagem)> ReverterEtapaAsync(int id, string? motivo = null, string? usuario = null)
     {
         await Task.Delay(150);
         var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
         if (mock == null) return (false, "Pedido não encontrado.");
 
-        string usuarioAtual = ObterUsuarioLogado(null);
+        string usuarioAtual = ObterUsuarioLogado(usuario);
+        string motivoFinal = string.IsNullOrWhiteSpace(motivo) ? "Não informado" : motivo.Trim();
         DateTime horaCancelamento = DateTime.Now;
         string statusAtual = mock.Status ?? "Aguardando";
 
-        // Encerra eventual pausa aberta caso o operador cancele diretamente
         var pausaAberta = mock.HistoricoPausas.LastOrDefault(p => p.DataHoraRetomada == null);
         if (pausaAberta != null)
         {
-            pausaAberta.OperadorRetomada = $"{usuarioAtual} (Cancelado)";
+            pausaAberta.OperadorRetomada = $"{usuarioAtual} (Cancelado: {motivoFinal})";
             pausaAberta.DataHoraRetomada = horaCancelamento;
         }
 
-        // 1. SE O PEDIDO ESTAVA EM ANDAMENTO, GRAVA UMA LINHA DE CANCELAMENTO NO HISTÓRICO
         if (!statusAtual.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
         {
             var registroCancelado = new Pedido
@@ -351,7 +324,6 @@ public class MockPedidoService : IPedidoService
         mock.PausadoPor = string.Empty;
         mock.DataHoraPausa = null;
 
-        // 2. REVERTE O STATUS DO PEDIDO E RESETA AS BIPAGENS DOS ITENS
         if (statusAtual.Equals("Em Separaçao", StringComparison.OrdinalIgnoreCase) ||
             statusAtual.Equals("Em Separação", StringComparison.OrdinalIgnoreCase))
         {
@@ -409,9 +381,9 @@ public class MockPedidoService : IPedidoService
         return (true, "Sucesso");
     }
 
-    public async Task<(bool Sucesso, string Mensagem)> CancelarPedidoAsync(int id, string usuario)
+    public async Task<(bool Sucesso, string Mensagem)> CancelarPedidoAsync(int id, string usuario, string? motivo = null)
     {
-        return await ReverterEtapaAsync(id);
+        return await ReverterEtapaAsync(id, motivo, usuario);
     }
 
     public async Task<string?> BaixarRelatorioProdutividadeAsync(string operadorFiltro)
@@ -480,14 +452,58 @@ public class MockPedidoService : IPedidoService
         return filePath;
     }
 
-    public async Task<(bool Sucesso, string Mensagem)> EnviarEstimativaAsync(int id, string dataHoraEstimada)
+    public async Task<(bool Sucesso, string Mensagem)> EnviarEstimativaAsync(int id, string dataHoraEstimada, string etapa = "", string usuario = "")
     {
         await Task.Delay(150);
         var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
         if (mock == null) return (false, "Pedido não encontrado.");
 
-        mock.DataHoraEstimada = dataHoraEstimada;
-        mock.EstimativaSolicitada = false;
+        string operador = ObterUsuarioLogado(usuario);
+        bool respondeSep = etapa.Equals("Separacao", StringComparison.OrdinalIgnoreCase) ||
+                           etapa.Equals("Separação", StringComparison.OrdinalIgnoreCase) ||
+                           (string.IsNullOrEmpty(etapa) && mock.EstimativaPendenteSeparacao);
+
+        if (respondeSep)
+        {
+            mock.EstimativaSeparacao = dataHoraEstimada;
+            mock.EstimativaSeparacaoUser = operador;
+            mock.EstimativaPendenteSeparacao = false;
+            mock.EstimativaPendenteConferencia = true;
+            mock.DataHoraEstimada = $"Sep: {dataHoraEstimada} ({operador})";
+        }
+        else
+        {
+            mock.EstimativaConferencia = dataHoraEstimada;
+            mock.EstimativaConferenciaUser = operador;
+            mock.EstimativaPendenteSeparacao = false;
+            mock.EstimativaPendenteConferencia = false;
+            mock.EstimativaSolicitada = false;
+            mock.DataHoraEstimada = dataHoraEstimada;
+        }
+
+        return (true, string.Empty);
+    }
+
+    public async Task<List<Cotacao>> GetCotacoesPendentesAsync()
+    {
+        await Task.Delay(150);
+        return _cotacoesMock
+            .Where(c => c.Status.Equals("Pendente", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(c => c.Id)
+            .ToList();
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> ResponderCotacaoAsync(int id, int volumes, double pesoTotalKg, string dimensoes, string usuario)
+    {
+        await Task.Delay(150);
+        var cotacao = _cotacoesMock.FirstOrDefault(c => c.Id == id);
+        if (cotacao == null) return (false, "Cotação não encontrada.");
+
+        cotacao.Volumes = volumes;
+        cotacao.PesoTotalKg = Math.Round(pesoTotalKg, 2);
+        cotacao.Dimensoes = dimensoes;
+        cotacao.RespondidoPor = ObterUsuarioLogado(usuario);
+        cotacao.Status = "Respondida";
 
         return (true, string.Empty);
     }
