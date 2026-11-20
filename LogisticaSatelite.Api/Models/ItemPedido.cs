@@ -21,6 +21,9 @@ namespace LogisticaSatelite.Api.Models
         public string LocalPicking { get; set; } = string.Empty;
         public string LocalPulmao { get; set; } = string.Empty;
 
+        // Definido no banco: 0 = Comum | 1 = Area Tecnica
+        public int TipoRota { get; set; } = 0;
+
         public int Quantidade { get; set; }
         public int ScansSep { get; set; }
         public int ScansConf { get; set; }

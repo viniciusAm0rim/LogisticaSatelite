@@ -3,36 +3,29 @@ using SpringApp.Models;
 
 namespace SpringApp.Services;
 
-public class AuthService
+public class AuthService : IAuthService
 {
     private readonly HttpClient _httpClient;
 
-#if ANDROID
-    private const string BaseHost = "https://10.0.2.2:44379/api/usuarios";
-#else    
-    private const string BaseHost = "https://localhost:44379/api/usuarios";
-#endif
-
-    public AuthService()
+    public AuthService(HttpClient httpClient)
     {
-        var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = (m, c, ch, e) => true };
-        _httpClient = new HttpClient(handler);
+        _httpClient = httpClient;
     }
 
     public async Task<(bool Sucesso, string Mensagem)> RealizarLoginAsync(string usuario, string senha)
     {
         try
         {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
             var payload = new { User = usuario, Senha = senha };
-            var response = await _httpClient.PostAsJsonAsync($"{BaseHost}/login", payload);
+            var response = await _httpClient.PostAsJsonAsync("api/usuarios/login", payload, cts.Token);
 
             if (response.IsSuccessStatusCode)
             {
-                var userDb = await response.Content.ReadFromJsonAsync<Usuario>();
+                var userDb = await response.Content.ReadFromJsonAsync<Usuario>(cancellationToken: cts.Token);
 
                 if (userDb != null)
                 {
-                    // Grava os dados vindos diretamente do SQLite
                     Preferences.Set("UsuarioId", userDb.Id);
                     Preferences.Set("UsuarioNome", userDb.Nome.ToUpper());
                     Preferences.Set("UsuarioUser", userDb.User);

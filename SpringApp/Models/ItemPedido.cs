@@ -21,6 +21,22 @@ public class ItemPedido : INotifyPropertyChanged
     public string Nome { get; set; } = string.Empty;
     public string LocalPicking { get; set; } = string.Empty;
     public string LocalPulmao { get; set; } = string.Empty;
+
+    private int _tipoRota;
+    [JsonPropertyName("tipoRota")]
+    public int TipoRota
+    {
+        get => _tipoRota;
+        set
+        {
+            if (_tipoRota != value)
+            {
+                _tipoRota = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public int Quantidade { get; set; }
 
     private int _bipagensSeparacao;

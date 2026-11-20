@@ -13,11 +13,6 @@ public class ApiServices : IPedidoService
     {
         _httpClient = httpClient;
 
-        if (_httpClient.Timeout == TimeSpan.FromSeconds(100))
-        {
-            _httpClient.Timeout = TimeSpan.FromSeconds(6);
-        }
-
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
@@ -125,6 +120,41 @@ public class ApiServices : IPedidoService
         }
 
         return (false, "Ocorreu um erro inesperado ao processar a requisição.");
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> ConcluirSeparacaoRotaAsync(Pedido pedido, int tipoRota, string usuario, int errosEvitados = 0)
+    {
+        try
+        {
+            var itensDaRota = pedido.Itens?
+                .Where(i => i.TipoRota == tipoRota)
+                .Select(i => new
+                {
+                    Id = i.Id,
+                    CodItem = i.CodItem,
+                    ScansSep = i.BipagensSeparacao,
+                    ScansConf = i.BipagensConferencia
+                }).ToList();
+
+            var dto = new
+            {
+                Usuario = usuario,
+                ErrosEvitados = errosEvitados,
+                TipoRota = tipoRota,
+                Itens = itensDaRota
+            };
+
+            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{pedido.IdPedido}/AguardandoConfe", dto, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            string erro = await ExtrairErroHttpAsync(response);
+            return (false, erro);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de conexão: {ex.Message}");
+        }
     }
 
     public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, string usuario = null, int errosEvitados = 0)
@@ -367,6 +397,24 @@ public class ApiServices : IPedidoService
         }
     }
 
+    public async Task<(bool Sucesso, string Mensagem)> RecusarDevolucaoAsync(int id, string motivoRejeicao, string usuario)
+    {
+        try
+        {
+            var payload = new { MotivoRejeicao = motivoRejeicao, Usuario = usuario };
+            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/recusar", payload, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, "Devolução recusada na doca.");
+
+            string erro = await ExtrairErroHttpAsync(response);
+            return (false, erro);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de Conexão: {ex.Message}");
+        }
+    }
+
     public async Task<(bool Sucesso, string Mensagem)> ClassificarItensDevolucaoAsync(int id, List<ItemClassificadoDevolucaoInput> itensClassificados, string usuario)
     {
         try
@@ -433,24 +481,6 @@ public class ApiServices : IPedidoService
         public bool AprovadaNaConferencia { get; set; }
         public string Mensagem { get; set; } = string.Empty;
         public Devolucao? Devolucao { get; set; }
-    }
-
-    public async Task<(bool Sucesso, string Mensagem)> RecusarDevolucaoAsync(int id, string motivoRejeicao, string usuario)
-    {
-        try
-        {
-            var payload = new { MotivoRejeicao = motivoRejeicao, Usuario = usuario };
-            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/recusar", payload, _jsonOptions);
-            if (response.IsSuccessStatusCode)
-                return (true, "Devolução recusada na doca.");
-
-            string erro = await ExtrairErroHttpAsync(response);
-            return (false, erro);
-        }
-        catch (Exception ex)
-        {
-            return (false, $"Erro de Conexão: {ex.Message}");
-        }
     }
 }
 

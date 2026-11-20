@@ -12,6 +12,7 @@ public partial class SeparacaoItensPage : ContentPage
     private bool _bloqueioFoco = false;
     private readonly int _pedidoId;
     private int _errosEvitados = 0;
+    private List<ItemPedido> _itensComuns = new();
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
     public SeparacaoItensPage(Pedido pedido, IPedidoService pedidoService)
@@ -88,7 +89,12 @@ public partial class SeparacaoItensPage : ContentPage
 
         CardNotificacaoEstimativaSep.IsVisible = _pedido.EstimativaPendenteSeparacao;
 
-        ItensCollectionView.ItemsSource = _pedido.Itens;
+        // Filtra apenas os itens comuns (TipoRota == 0)
+        _itensComuns = (_pedido.Itens ?? new List<ItemPedido>())
+            .Where(i => i.TipoRota == 0)
+            .ToList();
+
+        ItensCollectionView.ItemsSource = _itensComuns;
         AtualizarContadores();
         GarantirFocoLeitor();
     }
@@ -96,7 +102,7 @@ public partial class SeparacaoItensPage : ContentPage
     private void OnAbrirModalEstimativaSepClicked(object sender, EventArgs e)
     {
         _bloqueioFoco = true;
-        int faltam = _pedido.Itens?.Sum(i => i.SeparacaoPendente) ?? 0;
+        int faltam = _itensComuns.Sum(i => i.SeparacaoPendente);
         LabelResumoItensSep.Text = $"Faltam separar {faltam} unidades neste pedido";
         EstimativaSepDatePicker.Date = DateTime.Today;
         EstimativaSepTimePicker.Time = DateTime.Now.TimeOfDay;
@@ -173,7 +179,7 @@ public partial class SeparacaoItensPage : ContentPage
 
     private async Task ValidarCodigoLidoAsync(string codigo)
     {
-        var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo, StringComparison.OrdinalIgnoreCase));
+        var item = _itensComuns.FirstOrDefault(i => i.CodItem.Equals(codigo, StringComparison.OrdinalIgnoreCase));
 
         if (item != null)
         {
@@ -185,7 +191,7 @@ public partial class SeparacaoItensPage : ContentPage
             _bloqueioFoco = true;
             try
             {
-                await DisplayAlert("Atenção", "Código inválido.", "OK");
+                await DisplayAlert("Atenção", "Código inválido ou pertencente à Área Técnica.", "OK");
             }
             finally
             {
@@ -204,7 +210,7 @@ public partial class SeparacaoItensPage : ContentPage
             string codigo = await DisplayPromptAsync("Manual", "Informe o SKU:", "Confirmar", "Cancelar");
             if (!string.IsNullOrWhiteSpace(codigo))
             {
-                var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
+                var item = _itensComuns.FirstOrDefault(i => i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
                 if (item != null)
                 {
                     ProcessarBipagemItem(item);
@@ -212,7 +218,7 @@ public partial class SeparacaoItensPage : ContentPage
                 else
                 {
                     _errosEvitados++;
-                    await DisplayAlert("Erro", "Produto não encontrado.", "OK");
+                    await DisplayAlert("Erro", "Produto não encontrado nesta lista.", "OK");
                 }
             }
         }
@@ -234,14 +240,13 @@ public partial class SeparacaoItensPage : ContentPage
 
     private void AtualizarContadores()
     {
-        if (_pedido?.Itens == null) return;
-        int total = _pedido.Itens.Sum(i => i.Quantidade);
-        int sep = _pedido.Itens.Sum(i => i.BipagensSeparacao);
+        int total = _itensComuns.Sum(i => i.Quantidade);
+        int sep = _itensComuns.Sum(i => i.BipagensSeparacao);
 
         TotalRestanteLabel.Text = sep.ToString();
         TotalGeralLabel.Text = total.ToString();
 
-        if (total - sep <= 0 && _pedido.Itens.Any())
+        if (total - sep <= 0 && _itensComuns.Any())
         {
             _ = FinalizarSeparacaoAutomaticaAsync();
         }
@@ -316,10 +321,18 @@ public partial class SeparacaoItensPage : ContentPage
         if (_isFinalizando) return;
         _isFinalizando = true;
 
-        var (sucesso, msg) = await _pedidoService.AvancarEtapaAsync(_pedido.IdPedido, _pedido.Status, _usuarioLogado, _errosEvitados);
+        var (sucesso, msg) = await _pedidoService.ConcluirSeparacaoRotaAsync(_pedido, 0, _usuarioLogado, _errosEvitados);
         if (sucesso)
         {
-            await DisplayAlert("Sucesso", "Separação concluída!", "OK");
+            var pedidoAtualizado = await _pedidoService.GetPedidoPorIdAsync(_pedidoId);
+            bool liberadoConferencia = pedidoAtualizado != null &&
+                                       pedidoAtualizado.Status.Equals("Aguardando Conferencia", StringComparison.OrdinalIgnoreCase);
+
+            string textoSucesso = liberadoConferencia
+                ? "Separação concluída! Todos os itens foram bipados e o pedido foi liberado para Conferência."
+                : "Itens comuns separados! O pedido aguarda a Área Técnica bipar os itens técnicos para liberar a Conferência.";
+
+            await DisplayAlert("Sucesso", textoSucesso, "OK");
             await Navigation.PopAsync();
         }
         else

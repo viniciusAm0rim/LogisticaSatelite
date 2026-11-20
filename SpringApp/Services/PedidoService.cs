@@ -121,6 +121,42 @@ public class PedidoService : IPedidoService
         catch (Exception ex) { return (false, $"Erro de Conexão: {ex.Message}"); }
     }
 
+    public async Task<(bool Sucesso, string Mensagem)> ConcluirSeparacaoRotaAsync(Pedido pedido, int tipoRota, string usuario, int errosEvitados = 0)
+    {
+        try
+        {
+            // Envia SOMENTE os itens pertencentes a esta rota (0 = Comum ou 1 = Area Tecnica)
+            var itensDaRota = pedido.Itens?
+                .Where(i => i.TipoRota == tipoRota)
+                .Select(i => new
+                {
+                    Id = i.Id,
+                    CodItem = i.CodItem,
+                    ScansSep = i.BipagensSeparacao,
+                    ScansConf = i.BipagensConferencia
+                }).ToList();
+
+            var dto = new
+            {
+                Usuario = usuario,
+                ErrosEvitados = errosEvitados,
+                TipoRota = tipoRota,
+                Itens = itensDaRota
+            };
+
+            var response = await _httpClient.PatchAsJsonAsync($"{BaseHost}/api/pedidos/{pedido.IdPedido}/AguardandoConfe", dto);
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            string erro = await ExtrairErroHttpAsync(response);
+            return (false, erro);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de conexão: {ex.Message}");
+        }
+    }
+
     public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, string usuario = null, int errosEvitados = 0)
     {
         try

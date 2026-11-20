@@ -31,22 +31,26 @@ namespace SpringApp
 
             builder.Services.AddSingleton(sp => new HttpClient(handler)
             {
-                BaseAddress = new Uri(baseAddress)
+                BaseAddress = new Uri(baseAddress),
+                Timeout = TimeSpan.FromSeconds(6)
             });
 
             // =================================================================
-            // CHAVE DE ALTERNÂNCIA ENTRE MOCK E API REAL
+            // CHAVE DE ALTERNÂNCIA ENTRE MOCK OFFLINE E API REAL
             // =================================================================
-            const bool usarMockLocal = false;
+            const bool usarMockLocal = true;
             if (usarMockLocal)
             {
                 builder.Services.AddSingleton<IPedidoService, MockPedidoService>();
+                builder.Services.AddSingleton<IAuthService, MockAuthService>();
             }
             else
             {
                 builder.Services.AddSingleton<IPedidoService, ApiServices>();
+                builder.Services.AddSingleton<IAuthService, AuthService>();
             }
 
+            builder.Services.AddTransient<LoginPage>();
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<GestaoSupervisorPage>();
 

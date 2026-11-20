@@ -118,6 +118,7 @@ namespace LogisticaSatelite.Api.Controllers
                         produtoDb.QtdCxAbaste = (int)Math.Ceiling((double)(itemInput.Quantidade - produtoDb.QtdPicking) / (produtoDb.UnidadepCx > 0 ? produtoDb.UnidadepCx : 1));
                     }
 
+                    // Rota definida diretamente no banco de dados (0 = Comum | 1 = Area Tecnica)
                     novoPedido.Itens.Add(new ItemPedido
                     {
                         ProdutoId = produtoDb.Id,
@@ -125,6 +126,7 @@ namespace LogisticaSatelite.Api.Controllers
                         Nome = produtoDb.Nome,
                         LocalPicking = produtoDb.LocalPicking,
                         LocalPulmao = produtoDb.LocalPulmao,
+                        TipoRota = produtoDb.TipoRota,
                         Quantidade = itemInput.Quantidade,
                         ScansSep = 0,
                         ScansConf = 0,
@@ -148,14 +150,14 @@ namespace LogisticaSatelite.Api.Controllers
             }
         }
 
-        // Inicia a separacao do pedido
+        // Inicia a separacao do pedido (permite entrada paralela da Separacao Normal e Area Tecnica)
         [HttpPatch("{id}/separar")]
         public async Task<ActionResult<Pedido>> IniciarSeparacao(int id, [FromBody] EtapaRequestDTO dto)
         {
             var pedido = await _context.Pedidos.FindAsync(id);
             if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
-            if (pedido.Status != "Aguardando")
+            if (pedido.Status != "Aguardando" && pedido.Status != "Em Separação" && pedido.Status != "Em Separacao")
                 throw new ExceptionTemplate("O pedido não está disponível para separação.");
 
             pedido.Status = "Em Separação";
@@ -171,25 +173,85 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
-        // Conclui a separacao e envia o pedido para aguardar conferencia
+        // Conclui a separacao apenas da rota informada (0 = Normal ou 1 = Area Tecnica).
+        // O pedido SO avanca para "Aguardando Conferencia" quando TODOS os itens (rota 0 e rota 1) estiverem bipados!
         [HttpPatch("{id}/AguardandoConfe")]
         public async Task<ActionResult<Pedido>> TerminoSeparacao(int id, [FromBody] EtapaRequestDTO dto)
         {
-            var pedido = await _context.Pedidos.FindAsync(id);
+            var pedido = await _context.Pedidos
+                .Include(p => p.Itens)
+                .ThenInclude(i => i.Produto)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
             if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
-            if (pedido.Status != "Em Separação" && pedido.Status != "Em Separacao")
+            if (pedido.Status != "Em Separação" && pedido.Status != "Em Separacao" && pedido.Status != "Aguardando")
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
 
-            pedido.Status = "Aguardando Conferencia";
-            pedido.SepUser = dto.Usuario;
-            pedido.SepFimData = DateTime.Now;
+            // Sincroniza TipoRota com o cadastro atual do Produto caso o item tenha sido criado antes
+            foreach (var item in pedido.Itens)
+            {
+                if (item.Produto != null && item.TipoRota != item.Produto.TipoRota)
+                {
+                    item.TipoRota = item.Produto.TipoRota;
+                }
+            }
+
+            // Filtra estritamente os itens da rota que esta sendo finalizada nesta requisicao
+            var itensDaRotaAtual = dto.TipoRota.HasValue
+                ? pedido.Itens.Where(i => i.TipoRota == dto.TipoRota.Value).ToList()
+                : pedido.Itens.ToList();
+
+            if (dto.Itens != null && dto.Itens.Any())
+            {
+                foreach (var itemDto in dto.Itens)
+                {
+                    var itemDb = itensDaRotaAtual.FirstOrDefault(i =>
+                        (itemDto.Id > 0 && i.Id == itemDto.Id) ||
+                        (!string.IsNullOrEmpty(itemDto.CodItem) && i.CodItem.Equals(itemDto.CodItem, StringComparison.OrdinalIgnoreCase)));
+
+                    if (itemDb != null)
+                    {
+                        itemDb.ScansSep = Math.Min(itemDb.Quantidade, Math.Max(itemDb.ScansSep, itemDto.ScansSep));
+                    }
+                }
+            }
+            else
+            {
+                // Se nenhum item individual foi enviado no payload, conclui apenas os itens desta rota
+                foreach (var itemDb in itensDaRotaAtual)
+                {
+                    itemDb.ScansSep = itemDb.Quantidade;
+                }
+            }
+
             pedido.ErrosEvitados += dto.ErrosEvitados;
             pedido.LockedBy = null;
             pedido.EmEspera = false;
             pedido.EtapaPausada = null;
             pedido.PausadoPor = null;
             pedido.DataHoraPausa = null;
+
+            if (!string.IsNullOrWhiteSpace(dto.Usuario))
+            {
+                if (string.IsNullOrWhiteSpace(pedido.SepUser))
+                    pedido.SepUser = dto.Usuario;
+                else if (!pedido.SepUser.Contains(dto.Usuario))
+                    pedido.SepUser = $"{pedido.SepUser} / {dto.Usuario}";
+            }
+
+            // REGRA CRITICA: Verifica TODOS os itens do pedido (tanto TipoRota == 0 quanto TipoRota == 1)
+            bool todosItensSeparados = pedido.Itens.Any() && pedido.Itens.All(i => i.ScansSep >= i.Quantidade);
+
+            if (todosItensSeparados)
+            {
+                pedido.Status = "Aguardando Conferencia";
+                pedido.SepFimData = DateTime.Now;
+            }
+            else
+            {
+                pedido.Status = "Em Separação";
+            }
 
             await _context.SaveChangesAsync();
             return Ok(pedido);
@@ -199,11 +261,17 @@ namespace LogisticaSatelite.Api.Controllers
         [HttpPatch("{id}/EmConferencia")]
         public async Task<ActionResult<Pedido>> InicioConferencia(int id, [FromBody] EtapaRequestDTO dto)
         {
-            var pedido = await _context.Pedidos.FindAsync(id);
+            var pedido = await _context.Pedidos
+                .Include(p => p.Itens)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
             if (pedido == null) return NotFound(new { message = $"Pedido #{id} não encontrado." });
 
             if (pedido.Status != "Aguardando Conferencia")
                 throw new ExceptionTemplate($"O pedido esta {pedido.Status}");
+
+            if (pedido.Itens.Any(i => i.ScansSep < i.Quantidade))
+                throw new ExceptionTemplate("Ainda existem itens pendentes de separação (Normal ou Área Técnica).");
 
             pedido.Status = "Em Conferencia";
             pedido.ConfInicioData ??= DateTime.Now;
@@ -338,8 +406,8 @@ namespace LogisticaSatelite.Api.Controllers
 
                     if (itemDb != null)
                     {
-                        itemDb.ScansSep = itemDto.ScansSep;
-                        itemDb.ScansConf = itemDto.ScansConf;
+                        itemDb.ScansSep = Math.Max(itemDb.ScansSep, itemDto.ScansSep);
+                        itemDb.ScansConf = Math.Max(itemDb.ScansConf, itemDto.ScansConf);
                     }
                 }
             }
@@ -440,7 +508,6 @@ namespace LogisticaSatelite.Api.Controllers
             }
             else
             {
-                // Registra o evento de cancelamento com motivo no historico para auditoria
                 pedido.HistoricoPausas.Add(new RegistroPausa
                 {
                     PedidoId = pedido.Id,
@@ -537,7 +604,7 @@ namespace LogisticaSatelite.Api.Controllers
             return Ok(pedido);
         }
 
-        // Grava a resposta da estimativa por etapa (1 Separador -> 2 Conferente) com assinatura
+        // Grava a resposta da estimativa por etapa
         [HttpPost("{id}/estimativa")]
         [HttpPatch("{id}/estimativa")]
         [HttpPut("{id}/estimativa")]
@@ -632,6 +699,8 @@ namespace LogisticaSatelite.Api.Controllers
         public string? Usuario { get; set; }
         public int Volumes { get; set; }
         public int ErrosEvitados { get; set; }
+        public int? TipoRota { get; set; }
+        public List<ItemProgressoDTO>? Itens { get; set; }
     }
 
     public class PausarPedidoDTO

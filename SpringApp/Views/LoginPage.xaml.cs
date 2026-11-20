@@ -4,12 +4,17 @@ namespace SpringApp.Views;
 
 public partial class LoginPage : ContentPage
 {
-    private readonly AuthService _authService;
+    private readonly IAuthService _authService;
 
-    public LoginPage()
+    public LoginPage(IAuthService authService)
     {
         InitializeComponent();
-        _authService = new AuthService();
+        _authService = authService;
+    }
+
+    // Construtor sem parâmetros caso seja instanciado via new LoginPage() no logout
+    public LoginPage() : this(IPlatformApplication.Current!.Services.GetRequiredService<IAuthService>())
+    {
     }
 
     private async void OnEntrarClicked(object sender, EventArgs e)
@@ -17,64 +22,47 @@ public partial class LoginPage : ContentPage
         string matricula = MatriculaEntry.Text?.Trim() ?? string.Empty;
         string senha = SenhaEntry.Text?.Trim() ?? string.Empty;
 
-        // Validação no frontend antes de bater na API
         if (string.IsNullOrEmpty(matricula) || string.IsNullOrEmpty(senha))
         {
-            await DisplayAlert("Atenção", "Por favor, informe a matrícula e a senha.", "OK");
+            await DisplayAlert("Atenção", "Por favor, informe o usuário/e-mail e a senha.", "OK");
             return;
         }
 
         SetLoadingState(true);
 
-        bool sucesso = false;
-        string mensagem = string.Empty;
+        var (sucesso, mensagem) = await _authService.RealizarLoginAsync(matricula, senha);
 
-        // =========================================================================
-        // BYPASS OFFLINE PARA APRESENTAÇÃO (Basta apagar este bloco após o evento)
-        // =========================================================================
-        if (matricula.Equals("vinicius@teste.com", StringComparison.OrdinalIgnoreCase) && senha == "1234")
+        if (sucesso)
         {
-            Preferences.Set("UsuarioNome", "Vinicius Ferreira");
-            Preferences.Set("MatriculaLogada", "3"); // Perfil Híbrido
-            sucesso = true;
+            string perfilDb = Preferences.Get("UsuarioPerfil", string.Empty).Trim();
+            string matriculaMapeada = MapearPerfilParaMatricula(perfilDb);
+            Preferences.Set("MatriculaLogada", matriculaMapeada);
         }
-        else if (matricula.Equals("supervisor@teste.com", StringComparison.OrdinalIgnoreCase) && senha == "1234")
-        {
-            Preferences.Set("UsuarioNome", "Gestão/Supervisor");
-            Preferences.Set("MatriculaLogada", "4"); // Perfil Supervisor
-            sucesso = true;
-        }
-        else
-        {
-            // Fluxo normal da API / Banco real
-            var resultado = await _authService.RealizarLoginAsync(matricula, senha);
-            sucesso = resultado.Sucesso;
-            mensagem = resultado.Mensagem;
-        }
-        // =========================================================================
 
         SetLoadingState(false);
 
         if (sucesso)
         {
-            string perfilLogado = Preferences.Get("MatriculaLogada", "");
-
-            // CORREÇÃO: Pede ao Injetor de Dependência do MAUI para criar a MainPage já com o serviço certo
             var mainPage = Handler.MauiContext.Services.GetService<MainPage>();
-
-            if (perfilLogado == "4")
-            {
-                Application.Current.MainPage = new NavigationPage(mainPage);
-            }
-            else
-            {
-                Application.Current.MainPage = new NavigationPage(mainPage);
-            }
+            Application.Current.MainPage = new NavigationPage(mainPage);
         }
         else
         {
-            await DisplayAlert("Acesso Negado", string.IsNullOrEmpty(mensagem) ? "E-mail ou senha inválidos." : mensagem, "OK");
+            await DisplayAlert("Acesso Negado", string.IsNullOrEmpty(mensagem) ? "Usuário ou senha inválidos." : mensagem, "OK");
         }
+    }
+
+    private static string MapearPerfilParaMatricula(string perfilDb)
+    {
+        return perfilDb.ToLowerInvariant() switch
+        {
+            "separador" or "1" => "1",
+            "conferente" or "2" => "2",
+            "hibrido" or "híbrido" or "3" => "3",
+            "supervisor" or "gestao" or "gestão" or "4" => "4",
+            "area tecnica" or "área técnica" or "tecnica" or "técnica" or "5" => "5",
+            _ => "3"
+        };
     }
 
     private async void OnEsqueciSenhaTapped(object sender, EventArgs e)

@@ -8,6 +8,9 @@
         public string Descricao { get; set; } = string.Empty;
         public int UnidadepCx { get; set; }
 
+        // Definido no banco: 0 = Comum (Separacao Normal) | 1 = Area Tecnica
+        public int TipoRota { get; set; } = 0;
+
         // Localizações simplificadas no padrão solicitado
         public string LocalPicking { get; set; } = string.Empty; // Ex: "R1-A-01" (Rua-Prateleira-Compartimento)
         public string LocalPulmao { get; set; } = string.Empty;  // Ex: "A1-P2"  (Área-Pallet)

@@ -97,8 +97,9 @@ public class MockPedidoService : IPedidoService
             DataHoraEstimada = "",
             Itens = new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 1, CodItem = "001", Nome = "Caixa Organizadora Plástica 30L", LocalPicking = "R1-A-01", Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0 },
-                new ItemPedido { ProdutoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", LocalPicking = "R2-A-05", Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0 }
+                new ItemPedido { ProdutoId = 1, CodItem = "001", Nome = "Caixa Organizadora Plástica 30L", LocalPicking = "R1-A-01", TipoRota = 0, Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0 },
+                new ItemPedido { ProdutoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", LocalPicking = "R2-A-05", TipoRota = 0, Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0 },
+                new ItemPedido { ProdutoId = 3, CodItem = "003", Nome = "Bobina Plástico Bolha 1,20m x 100m", LocalPicking = "LAB-TEC-01", TipoRota = 1, Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0 }
             }
         },
         new Pedido
@@ -114,7 +115,7 @@ public class MockPedidoService : IPedidoService
             DataHoraEstimada = "11/10/2026 16:30",
             Itens = new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 3, CodItem = "003", Nome = "Bobina Plástico Bolha 1,20m x 100m", LocalPicking = "R3-C-10", Quantidade = 2, BipagensSeparacao = 0, BipagensConferencia = 0 }
+                new ItemPedido { ProdutoId = 3, CodItem = "003", Nome = "Bobina Plástico Bolha 1,20m x 100m", LocalPicking = "LAB-TEC-01", TipoRota = 1, Quantidade = 2, BipagensSeparacao = 0, BipagensConferencia = 0 }
             }
         },
         new Pedido
@@ -130,7 +131,7 @@ public class MockPedidoService : IPedidoService
             DataHoraEstimada = "11/10/2026 18:00",
             Itens = new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", LocalPicking = "R2-A-05", Quantidade = 3, BipagensSeparacao = 0, BipagensConferencia = 0 }
+                new ItemPedido { ProdutoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", LocalPicking = "R2-A-05", TipoRota = 0, Quantidade = 3, BipagensSeparacao = 0, BipagensConferencia = 0 }
             }
         }
     };
@@ -219,6 +220,16 @@ public class MockPedidoService : IPedidoService
         }
         else if (mock.Status.Equals("Em Separaçao", StringComparison.OrdinalIgnoreCase) || mock.Status.Equals("Em Separação", StringComparison.OrdinalIgnoreCase))
         {
+            if (etapaAtual.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
+                return (true, "Sucesso");
+
+            // Só avança para Conferência se 100% de TODOS os itens (rota 0 e rota 1) estiverem bipados
+            if (mock.Itens != null && mock.Itens.Any(i => i.BipagensSeparacao < i.Quantidade))
+            {
+                mock.Status = "Em Separaçao";
+                return (true, "Aguardando conclusão de todos os itens (incluindo Área Técnica).");
+            }
+
             mock.Status = "Aguardando Conferencia";
             if (string.IsNullOrEmpty(mock.SepUser)) mock.SepUser = usuarioAtual;
             mock.SepFimData = dataHoraAtual;
@@ -226,6 +237,9 @@ public class MockPedidoService : IPedidoService
         }
         else if (mock.Status.Equals("Aguardando Conferencia", StringComparison.OrdinalIgnoreCase) || mock.Status.Equals("Aguardando Conferência", StringComparison.OrdinalIgnoreCase))
         {
+            if (mock.Itens != null && mock.Itens.Any(i => i.BipagensSeparacao < i.Quantidade))
+                return (false, "Ainda existem itens pendentes de separação (Normal ou Área Técnica).");
+
             mock.Status = "Em Conferencia";
             mock.ConfUser = usuarioAtual;
             mock.ConfInicioData ??= dataHoraAtual;
@@ -237,6 +251,50 @@ public class MockPedidoService : IPedidoService
             mock.ExpInicioData ??= dataHoraAtual;
             mock.ExpFimData = dataHoraAtual;
             mock.ErrosEvitados += errosEvitados;
+        }
+
+        return (true, "Sucesso");
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> ConcluirSeparacaoRotaAsync(Pedido pedido, int tipoRota, string usuario, int errosEvitados = 0)
+    {
+        await Task.Delay(200);
+        var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == pedido.IdPedido);
+        if (mock == null) return (false, "Pedido não encontrado.");
+
+        string usuarioAtual = ObterUsuarioLogado(usuario);
+        mock.EmEspera = false;
+        mock.EtapaPausada = string.Empty;
+        mock.PausadoPor = string.Empty;
+        mock.DataHoraPausa = null;
+        mock.ErrosEvitados += errosEvitados;
+
+        // Atualiza exclusivamente os itens pertencentes à rota concluída (0 = Comum | 1 = Área Técnica)
+        foreach (var itemMock in mock.Itens.Where(i => i.TipoRota == tipoRota))
+        {
+            var itemUi = pedido.Itens?.FirstOrDefault(x =>
+                x.TipoRota == tipoRota &&
+                x.CodItem.Equals(itemMock.CodItem, StringComparison.OrdinalIgnoreCase));
+
+            int bipado = itemUi != null ? Math.Max(itemMock.BipagensSeparacao, itemUi.BipagensSeparacao) : itemMock.Quantidade;
+            itemMock.BipagensSeparacao = Math.Min(itemMock.Quantidade, bipado);
+        }
+
+        if (string.IsNullOrWhiteSpace(mock.SepUser))
+            mock.SepUser = usuarioAtual;
+        else if (!mock.SepUser.Contains(usuarioAtual))
+            mock.SepUser = $"{mock.SepUser} / {usuarioAtual}";
+
+        // Só libera para "Aguardando Conferencia" quando TODOS os itens (rota 0 e rota 1) estiverem bipados
+        bool todosConcluidos = mock.Itens.Any() && mock.Itens.All(i => i.BipagensSeparacao >= i.Quantidade);
+        if (todosConcluidos)
+        {
+            mock.Status = "Aguardando Conferencia";
+            mock.SepFimData = DateTime.Now;
+        }
+        else
+        {
+            mock.Status = "Em Separaçao";
         }
 
         return (true, "Sucesso");
@@ -290,6 +348,19 @@ public class MockPedidoService : IPedidoService
         mock.PausadoPor = usuarioAtual;
         mock.DataHoraPausa = agora;
         mock.ErrosEvitados += errosEvitados;
+
+        if (pedido.Itens != null)
+        {
+            foreach (var itemUi in pedido.Itens)
+            {
+                var itemMock = mock.Itens.FirstOrDefault(i => i.CodItem.Equals(itemUi.CodItem, StringComparison.OrdinalIgnoreCase));
+                if (itemMock != null)
+                {
+                    itemMock.BipagensSeparacao = Math.Max(itemMock.BipagensSeparacao, itemUi.BipagensSeparacao);
+                    itemMock.BipagensConferencia = Math.Max(itemMock.BipagensConferencia, itemUi.BipagensConferencia);
+                }
+            }
+        }
 
         if (etapa == "Expedição" && mock.ExpInicioData == null)
         {

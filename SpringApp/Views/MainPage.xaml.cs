@@ -36,7 +36,16 @@ public partial class MainPage : ContentPage
 
     private void AplicarRegrasDeAcessoPorPerfil()
     {
-        if (_perfilLogado == 1)
+        if (_perfilLogado == 5)
+        {
+            ContainerAbaSeparacao.IsVisible = true;
+            TextSeparacao.Text = "Área Técnica";
+            ContainerAbaConferencia.IsVisible = false;
+            ContainerAbaExpedicao.IsVisible = false;
+            _statusAtualFiltro = "Aguardando";
+            AtualizarVisualAbas(AbaSeparacaoBtn);
+        }
+        else if (_perfilLogado == 1)
         {
             ContainerAbaSeparacao.IsVisible = true;
             ContainerAbaConferencia.IsVisible = false;
@@ -109,6 +118,7 @@ public partial class MainPage : ContentPage
             2 => "Conferente",
             3 => "Híbrido",
             4 => "Supervisor",
+            5 => "Área Técnica",
             _ => "Usuário Padrão"
         };
 
@@ -167,9 +177,37 @@ public partial class MainPage : ContentPage
 
             BannerConexao.IsVisible = false;
 
-            _pedidosAtivos = todosPedidos
-                .Where(p => !p.EmEspera && string.Equals(p.Status, _statusAtualFiltro, StringComparison.OrdinalIgnoreCase))
-                .ToList();
+            if (_statusAtualFiltro == "Aguardando")
+            {
+                if (_perfilLogado == 5)
+                {
+                    _pedidosAtivos = todosPedidos
+                        .Where(p => !p.EmEspera &&
+                                    (p.Status.Equals("Aguardando", StringComparison.OrdinalIgnoreCase) ||
+                                     p.Status.Equals("Em Separação", StringComparison.OrdinalIgnoreCase) ||
+                                     p.Status.Equals("Em Separaçao", StringComparison.OrdinalIgnoreCase)) &&
+                                    p.Itens != null &&
+                                    p.Itens.Any(i => i.TipoRota == 1 && i.SeparacaoPendente > 0))
+                        .ToList();
+                }
+                else
+                {
+                    _pedidosAtivos = todosPedidos
+                        .Where(p => !p.EmEspera &&
+                                    (p.Status.Equals("Aguardando", StringComparison.OrdinalIgnoreCase) ||
+                                     p.Status.Equals("Em Separação", StringComparison.OrdinalIgnoreCase) ||
+                                     p.Status.Equals("Em Separaçao", StringComparison.OrdinalIgnoreCase)) &&
+                                    p.Itens != null &&
+                                    p.Itens.Any(i => i.TipoRota == 0 && i.SeparacaoPendente > 0))
+                        .ToList();
+                }
+            }
+            else
+            {
+                _pedidosAtivos = todosPedidos
+                    .Where(p => !p.EmEspera && string.Equals(p.Status, _statusAtualFiltro, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
 
             PedidosCollectionView.ItemsSource = _pedidosAtivos;
             AtualizarPedidosEmEspera(todosPedidos);
@@ -207,7 +245,7 @@ public partial class MainPage : ContentPage
 
             if (emExecucao) return false;
 
-            if (_perfilLogado == 1)
+            if (_perfilLogado == 1 || _perfilLogado == 5)
                 return p.EstimativaPendenteSeparacao;
 
             if (_perfilLogado == 2)
@@ -241,7 +279,7 @@ public partial class MainPage : ContentPage
     {
         string etapaFiltro = _statusAtualFiltro switch
         {
-            "Aguardando" => "Separação",
+            "Aguardando" => _perfilLogado == 5 ? "Área Técnica" : "Separação",
             "Aguardando Conferencia" => "Conferência",
             "Aguardando Expediçao" => "Expedição",
             _ => string.Empty
@@ -270,7 +308,11 @@ public partial class MainPage : ContentPage
                     return;
                 }
 
-                if (pedidoPausado.EtapaPausada.Equals("Separação", StringComparison.OrdinalIgnoreCase))
+                if (pedidoPausado.EtapaPausada.Equals("Área Técnica", StringComparison.OrdinalIgnoreCase))
+                {
+                    await Navigation.PushAsync(new SeparacaoItensTecnicaPage(pedidoPausado, _pedidoService));
+                }
+                else if (pedidoPausado.EtapaPausada.Equals("Separação", StringComparison.OrdinalIgnoreCase))
                 {
                     await Navigation.PushAsync(new SeparacaoItensPage(pedidoPausado, _pedidoService));
                 }
@@ -393,19 +435,31 @@ public partial class MainPage : ContentPage
         {
             await ExecutarComLoadingAsync(button, "Aguarde...", async () =>
             {
-                if (pedidoSelecionado.Status.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
+                if (_statusAtualFiltro == "Aguardando")
                 {
-                    var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(pedidoSelecionado.IdPedido, pedidoSelecionado.Status);
-                    if (sucesso)
+                    if (pedidoSelecionado.Status.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
                     {
+                        var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(pedidoSelecionado.IdPedido, pedidoSelecionado.Status, _usuarioLogado);
+                        if (!sucesso)
+                        {
+                            await DisplayAlert("Erro", mensagem, "OK");
+                            return;
+                        }
                         pedidoSelecionado.Status = "Em Separaçao";
+                    }
+
+                    if (_perfilLogado == 5)
+                    {
+                        await Navigation.PushAsync(new SeparacaoItensTecnicaPage(pedidoSelecionado, _pedidoService));
+                    }
+                    else
+                    {
                         await Navigation.PushAsync(new SeparacaoItensPage(pedidoSelecionado, _pedidoService));
                     }
-                    else await DisplayAlert("Erro", mensagem, "OK");
                 }
                 else if (pedidoSelecionado.Status.Equals("Aguardando Conferencia", StringComparison.OrdinalIgnoreCase))
                 {
-                    var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(pedidoSelecionado.IdPedido, pedidoSelecionado.Status);
+                    var (sucesso, mensagem) = await _pedidoService.AvancarEtapaAsync(pedidoSelecionado.IdPedido, pedidoSelecionado.Status, _usuarioLogado);
                     if (sucesso)
                     {
                         pedidoSelecionado.Status = "Em Conferencia";
