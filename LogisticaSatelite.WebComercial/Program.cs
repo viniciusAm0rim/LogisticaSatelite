@@ -33,11 +33,18 @@ builder.Services.AddHttpClient<ProducaoAdmService>(client =>
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
+builder.Services.AddHttpClient<ProducaoDevolucoesService>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 // Serviços Mock (100% em memória, zero chamadas de rede)
 builder.Services.AddScoped<MockDataStore>();
 builder.Services.AddScoped<MockPedidosService>();
 builder.Services.AddScoped<MockCotacoesService>();
 builder.Services.AddScoped<MockAdmService>();
+builder.Services.AddScoped<MockDevolucoesService>();
 
 // Resolução dinâmica da fonte de dados conforme o login ativo
 builder.Services.AddScoped<IPedidosService>(sp =>
@@ -64,6 +71,14 @@ builder.Services.AddScoped<IAdmService>(sp =>
         : sp.GetRequiredService<ProducaoAdmService>();
 });
 
+builder.Services.AddScoped<IDevolucoesService>(sp =>
+{
+    var sessao = sp.GetRequiredService<SessaoStateService>();
+    return sessao.UsarMock
+        ? sp.GetRequiredService<MockDevolucoesService>()
+        : sp.GetRequiredService<ProducaoDevolucoesService>();
+});
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -79,4 +94,4 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.Run();
+app.Run(); ;

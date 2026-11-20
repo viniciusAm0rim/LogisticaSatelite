@@ -5,6 +5,8 @@ namespace LogisticaSatelite.WebComercial.Services.Mock;
 public class MockDataStore
 {
     public List<PedidoDto> Pedidos { get; }
+    public List<DevolucaoDto> Devolucoes { get; }
+    public List<ProdutoAvariadoDto> ProdutosAvariados { get; }
 
     public MockDataStore()
     {
@@ -89,6 +91,69 @@ public class MockDataStore
 
             CriarPedido(1001, "Supermercado Modelo Ltda", "Loja", "Expedido", false,
                 "Rafael Costa", "Carlos Mendes", "Juliana Rocha", 1, 0, baseTime.AddHours(-2.3), baseTime.AddHours(-2.05), baseTime.AddHours(-2.0), baseTime.AddHours(-1.75), baseTime.AddHours(-1.7), baseTime.AddHours(-1.55))
+        };
+
+        Devolucoes = new List<DevolucaoDto>
+        {
+            new DevolucaoDto
+            {
+                Id = 1,
+                PedidoId = 1019,
+                ClienteNome = "Comercial Ferragens Centro",
+                DocumentoCliente = "12.345.678/0001-99",
+                EmiteNotaFiscal = true,
+                NumeroNotaDevolucao = "NF-98452",
+                MotivoGeral = "Pedido enviado em duplicidade pelo comprador",
+                Status = "Pendente Analise",
+                DataSolicitacao = DateTime.Now.AddMinutes(-35),
+                VolumesInformados = 1,
+                Itens = new List<ItemDevolucaoDto>
+                {
+                    new ItemDevolucaoDto { Id = 1, DevolucaoId = 1, CodItem = "001", Nome = "Caixa Organizadora Plástica 30L", QuantidadeSolicitada = 2 }
+                }
+            },
+            new DevolucaoDto
+            {
+                Id = 2,
+                PedidoId = 1017,
+                ClienteNome = "João Pedro Almeida (Pessoa Física)",
+                DocumentoCliente = "389.451.220-10",
+                EmiteNotaFiscal = false,
+                MotivoGeral = "Tamanho incompatível com a prateleira",
+                Status = "Pendente Analise",
+                DataSolicitacao = DateTime.Now.AddMinutes(-12),
+                VolumesInformados = 1,
+                Itens = new List<ItemDevolucaoDto>
+                {
+                    new ItemDevolucaoDto { Id = 2, DevolucaoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", QuantidadeSolicitada = 3 }
+                }
+            }
+        };
+
+        ProdutosAvariados = new List<ProdutoAvariadoDto>
+        {
+            new ProdutoAvariadoDto
+            {
+                Id = 1,
+                CodItem = "001",
+                Nome = "Caixa Organizadora Plástica 30L",
+                Quantidade = 2,
+                Origem = "Estoque Interno",
+                MotivoAvaria = "Tampa trincada durante movimentação na rua R1",
+                RegistradoPor = "Carlos Mendes",
+                DataRegistro = DateTime.Now.AddHours(-2)
+            },
+            new ProdutoAvariadoDto
+            {
+                Id = 2,
+                CodItem = "003",
+                Nome = "Bobina Plástico Bolha 1,20m x 100m",
+                Quantidade = 1,
+                Origem = "Devolução #0000",
+                MotivoAvaria = "Embalagem rasgada e umidade no transporte",
+                RegistradoPor = "Juliana Rocha",
+                DataRegistro = DateTime.Now.AddDays(-1)
+            }
         };
     }
 

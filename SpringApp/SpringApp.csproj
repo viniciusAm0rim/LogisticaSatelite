@@ -74,12 +74,18 @@
 	  <Compile Update="Views\ExpedicaoItensPage.xaml.cs">
 	    <DependentUpon>ExpedicaoItensPage.xaml</DependentUpon>
 	  </Compile>
+	  <Compile Update="Views\DevolucoesPage..xaml.cs">
+	    <DependentUpon>DevolucoesPage..xaml</DependentUpon>
+	  </Compile>
 	  <Compile Update="Views\SeparacaoItensPage.xaml.cs">
 	    <DependentUpon>SeparacaoItensPage.xaml</DependentUpon>
 	  </Compile>
 	</ItemGroup>
 
 	<ItemGroup>
+	  <MauiXaml Update="Views\AvariadosPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
 	  <MauiXaml Update="Views\ConferenciaItensPage.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
@@ -99,6 +105,9 @@
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\ExpedicaoItensPage.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Views\DevolucoesPage..xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\PedidoClientePage.xaml">

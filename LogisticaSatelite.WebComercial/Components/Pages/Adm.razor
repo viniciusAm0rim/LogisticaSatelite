@@ -1,20 +1,52 @@
 ﻿@page "/adm"
+@page "/adm-mock"
 @using System.Globalization
+@using System.Text
+@using LogisticaSatelite.WebComercial.Models
+@using LogisticaSatelite.WebComercial.Services.Interfaces
 @inject IAdmService AdmService
+@inject IDevolucoesService DevolucoesService
 @inject SessaoStateService Sessao
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Administração — Logística Satélite</PageTitle>
 
 <div class="container-xl py-4">
     <header class="topbar-card">
         <div>
-            <h1 class="page-title mb-0">Painel Administrativo</h1>
+            <div class="d-flex align-items-center gap-2">
+                <h1 class="page-title mb-0">Painel Administrativo</h1>
+                @if (Sessao.UsarMock)
+                {
+                    <span class="badge bg-warning text-dark">MODO MOCK</span>
+                }
+            </div>
             <p class="page-subtitle mb-0">Indicadores operacionais, acurácia de conferência e desempenho por operador</p>
         </div>
 
-        <div class="d-flex align-items-center gap-3">
-            <span class="user-label">Usuário: <strong>@Sessao.NomeUsuario</strong></span>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-primary btn-sm position-relative" @onclick="AbrirGavetaDevolucoesAsync">
+                <i class="bi bi-arrow-return-left me-1"></i>
+                Devoluções
+                @if (qtdDevolucoesPendentes > 0)
+                {
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                        @qtdDevolucoesPendentes
+                    </span>
+                }
+            </button>
+
+            <button type="button" class="btn btn-outline-success btn-sm" @onclick="BaixarPlanilhaAvariadosAsync" disabled="@exportandoAvariados">
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i>
+                @(exportandoAvariados ? "Gerando CSV..." : "Planilha Avariados (CSV)")
+            </button>
+
+            <a href="@LinkExternoDevolucao" target="_blank" class="btn btn-outline-secondary btn-sm" title="Abrir formulário público do cliente">
+                <i class="bi bi-box-arrow-up-right me-1"></i>Link Cliente
+            </a>
+
+            <span class="user-label ms-2">Usuário: <strong>@Sessao.NomeUsuario</strong></span>
             <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="Sair">
                 Sair
             </button>
@@ -301,11 +333,136 @@
     }
 </div>
 
+<!-- Gaveta Lateral Expandivel do ADM: Solicitações de Devolução -->
+@if (gavetaAberta)
+{
+    <div class="position-fixed top-0 start-0 w-100 h-100" style="background: rgba(15, 23, 42, 0.55); z-index: 1050;" @onclick="FecharGaveta">
+        <div class="bg-white h-100 shadow-lg ms-auto d-flex flex-column" style="width: 100%; max-width: 580px;" @onclick:stopPropagation="true">
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-light">
+                <div>
+                    <h5 class="fw-bold mb-0">Solicitações de Devolução (@devolucoes.Count)</h5>
+                    <span class="small text-muted">Análise, autorização e acompanhamento em tempo real</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" @onclick="CarregarDevolucoesAsync" title="Atualizar status">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
+                    </button>
+                    <button type="button" class="btn-close" @onclick="FecharGaveta"></button>
+                </div>
+            </div>
+
+            <div class="p-3 overflow-auto flex-grow-1">
+                @if (!string.IsNullOrEmpty(feedbackGaveta))
+                {
+                    <div class="alert alert-info py-2 px-3 small d-flex justify-content-between align-items-center">
+                        <span>@feedbackGaveta</span>
+                        <button type="button" class="btn-close btn-sm" @onclick="() => feedbackGaveta = null"></button>
+                    </div>
+                }
+
+                @if (!devolucoes.Any())
+                {
+                    <p class="text-muted small text-center py-4">Nenhuma solicitação de devolução registrada.</p>
+                }
+                else
+                {
+                    @foreach (var dev in devolucoes)
+                    {
+                        <div class="card mb-3 border shadow-sm">
+                            <div class="card-body p-3">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <div>
+                                        <span class="fw-bold">Devolução #@dev.Id.ToString("D4")</span>
+                                        <span class="text-muted small ms-2">• Pedido #@dev.PedidoId</span>
+                                    </div>
+                                    <span class="badge @ObterBadgeStatusDevolucao(dev.Status)">@dev.Status</span>
+                                </div>
+
+                                <div class="small mb-2">
+                                    <div><strong>Cliente:</strong> @dev.ClienteNome (@dev.DocumentoCliente)</div>
+                                    <div><strong>Motivo:</strong> @dev.MotivoGeral</div>
+                                    <div><strong>Volumes informados:</strong> @dev.VolumesInformados</div>
+                                    @if (dev.EmiteNotaFiscal)
+                                    {
+                                        <div class="text-primary"><strong>NF de Devolução:</strong> @dev.NumeroNotaDevolucao</div>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(dev.CodigoAutorizacao))
+                                    {
+                                        <div class="text-success"><strong>Código Gerado (Enviar ao Cliente PF):</strong> <code>@dev.CodigoAutorizacao</code></div>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-muted"><strong>Modalidade:</strong> Pessoa Física (Código será gerado ao autorizar)</div>
+                                    }
+                                </div>
+
+                                <div class="bg-light rounded p-2 mb-2 small">
+                                    <div class="fw-semibold mb-1">Itens solicitados:</div>
+                                    @foreach (var item in dev.Itens)
+                                    {
+                                        <div class="d-flex justify-content-between">
+                                            <span>@item.CodItem — @item.Nome</span>
+                                            <strong>Qtd: @item.QuantidadeSolicitada</strong>
+                                        </div>
+                                    }
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(dev.MotivoRejeicao))
+                                {
+                                    <div class="alert alert-danger py-1 px-2 small mb-2">
+                                        <strong>Motivo:</strong> @dev.MotivoRejeicao
+                                    </div>
+                                }
+
+                                @if (dev.Status == "Pendente Analise")
+                                {
+                                    @if (devIdRejeitando == dev.Id)
+                                    {
+                                        <div class="mt-2">
+                                            <input type="text" class="form-control form-control-sm mb-2" @bind="motivoRejeicaoInput" placeholder="Informe o motivo da recusa..." />
+                                            <div class="d-flex gap-2">
+                                                <button type="button" class="btn btn-danger btn-sm" @onclick="() => ConfirmarRejeicaoAsync(dev.Id)">Confirmar Recusa</button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => devIdRejeitando = null">Cancelar</button>
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex gap-2 mt-2">
+                                            <button type="button" class="btn btn-success btn-sm" @onclick="() => AutorizarDevolucaoAsync(dev.Id)">
+                                                Autorizar Devolução
+                                            </button>
+                                            <button type="button" class="btn btn-outline-danger btn-sm" @onclick="() => IniciarRejeicao(dev.Id)">
+                                                Não Autorizar
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private AdmDashboardDto? dados;
     private string funcionarioSelecionado = "Todos";
     private bool carregando = true;
     private string? erroConexao;
+    private bool exportandoAvariados;
+
+    // Estado da gaveta lateral de Devolucoes
+    private bool gavetaAberta;
+    private List<DevolucaoDto> devolucoes = new();
+    private int qtdDevolucoesPendentes;
+    private string? feedbackGaveta;
+    private int? devIdRejeitando;
+    private string motivoRejeicaoInput = string.Empty;
+
+    private string LinkExternoDevolucao => Sessao.UsarMock ? "/solicitar-devolucao?mock=1" : "/solicitar-devolucao";
 
     protected override async Task OnInitializedAsync()
     {
@@ -316,6 +473,7 @@
         }
 
         await CarregarDashboardAsync("Todos");
+        await CarregarDevolucoesAsync();
     }
 
     private async Task AoAlterarFuncionario(ChangeEventArgs e)
@@ -342,6 +500,132 @@
 
         carregando = false;
     }
+
+    private async Task CarregarDevolucoesAsync()
+    {
+        var resDev = await DevolucoesService.ListarDevolucoesAsync();
+        if (resDev.Sucesso)
+        {
+            devolucoes = resDev.Lista;
+            qtdDevolucoesPendentes = devolucoes.Count(d => d.Status == "Pendente Analise");
+        }
+    }
+
+    private async Task AbrirGavetaDevolucoesAsync()
+    {
+        feedbackGaveta = null;
+        devIdRejeitando = null;
+        await CarregarDevolucoesAsync();
+        gavetaAberta = true;
+    }
+
+    private void FecharGaveta()
+    {
+        gavetaAberta = false;
+        devIdRejeitando = null;
+    }
+
+    private async Task AutorizarDevolucaoAsync(int id)
+    {
+        var (sucesso, dev, erro) = await DevolucoesService.AnalisarDevolucaoAsync(id, true, Sessao.NomeUsuario);
+        if (sucesso && dev != null)
+        {
+            feedbackGaveta = dev.EmiteNotaFiscal
+                ? $"Devolução #{dev.Id:D4} autorizada! O operador no app deverá bipar a NF '{dev.NumeroNotaDevolucao}'."
+                : $"Devolução #{dev.Id:D4} autorizada! Código gerado para o cliente: {dev.CodigoAutorizacao}.";
+            await CarregarDevolucoesAsync();
+        }
+        else
+        {
+            feedbackGaveta = erro ?? "Erro ao autorizar devolução.";
+        }
+    }
+
+    private void IniciarRejeicao(int id)
+    {
+        devIdRejeitando = id;
+        motivoRejeicaoInput = string.Empty;
+    }
+
+    private async Task ConfirmarRejeicaoAsync(int id)
+    {
+        var (sucesso, _, erro) = await DevolucoesService.AnalisarDevolucaoAsync(id, false, Sessao.NomeUsuario, motivoRejeicaoInput);
+        if (sucesso)
+        {
+            devIdRejeitando = null;
+            feedbackGaveta = $"Devolução #{id:D4} não autorizada.";
+            await CarregarDevolucoesAsync();
+        }
+        else
+        {
+            feedbackGaveta = erro ?? "Informe o motivo da recusa.";
+        }
+    }
+
+    private async Task BaixarPlanilhaAvariadosAsync()
+    {
+        exportandoAvariados = true;
+        try
+        {
+            var resAv = await DevolucoesService.ListarAvariadosAsync();
+            var lista = resAv.Sucesso ? resAv.Lista : new List<ProdutoAvariadoDto>();
+
+            if (!string.IsNullOrWhiteSpace(funcionarioSelecionado) &&
+                !funcionarioSelecionado.Equals("Todos", StringComparison.OrdinalIgnoreCase))
+            {
+                lista = lista
+                    .Where(a => string.Equals(a.RegistradoPor, funcionarioSelecionado, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            var culturaBr = new CultureInfo("pt-BR");
+            var csv = new StringBuilder();
+            csv.AppendLine("ID Registro;SKU;Produto;Quantidade Avariada;Origem;ID Devolucao;ID Pedido;Motivo da Avaria;Registrado Por;Data e Hora Registro");
+
+            foreach (var av in lista.OrderByDescending(x => x.DataRegistro))
+            {
+                string sku = (av.CodItem ?? "-").Replace(";", ",");
+                string nome = (av.Nome ?? "-").Replace(";", ",");
+                string origem = (av.Origem ?? "-").Replace(";", ",");
+                string devId = av.DevolucaoId.HasValue ? $"#{av.DevolucaoId.Value:D4}" : "-";
+                string pedId = av.PedidoId.HasValue ? $"#{av.PedidoId.Value:D4}" : "-";
+                string motivo = string.IsNullOrWhiteSpace(av.MotivoAvaria) ? "-" : av.MotivoAvaria.Replace(";", ",");
+                string operadorReg = string.IsNullOrWhiteSpace(av.RegistradoPor) ? "-" : av.RegistradoPor.Replace(";", ",");
+                string dataReg = av.DataRegistro.ToString("yyyy-MM-dd HH:mm:ss", culturaBr);
+
+                csv.AppendLine($"{av.Id};{sku};{nome};{av.Quantidade};{origem};{devId};{pedId};{motivo};{operadorReg};{dataReg}");
+            }
+
+            byte[] bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+            string base64 = Convert.ToBase64String(bytes);
+            string nomeArquivo = $"Relatorio_Avariados_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+
+            await JS.InvokeVoidAsync("eval", $@"
+                (function() {{
+                    const link = document.createElement('a');
+                    link.href = 'data:text/csv;charset=utf-8;base64,{base64}';
+                    link.download = '{nomeArquivo}';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }})();
+            ");
+        }
+        finally
+        {
+            exportandoAvariados = false;
+        }
+    }
+
+    private static string ObterBadgeStatusDevolucao(string status) => status switch
+    {
+        "Pendente Analise" => "bg-warning text-dark",
+        "Autorizada" => "bg-primary",
+        "Volumes Conferidos" or "Em Classificação" => "bg-info text-dark",
+        "Concluida" => "bg-success",
+        "Rejeitada" or "Recusada na Doca" => "bg-danger",
+        _ => "bg-secondary"
+    };
 
     private void Sair()
     {

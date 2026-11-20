@@ -306,6 +306,152 @@ public class ApiServices : IPedidoService
             return (false, $"Erro de Conexão: {ex.Message}");
         }
     }
+
+    public async Task<List<Devolucao>> GetDevolucoesAtivasAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+            var todas = await _httpClient.GetFromJsonAsync<List<Devolucao>>("api/devolucoes", _jsonOptions, cts.Token) ?? new();
+            return todas.Where(d =>
+                d.Status.Equals("Autorizada", StringComparison.OrdinalIgnoreCase) ||
+                d.Status.Equals("Volumes Conferidos", StringComparison.OrdinalIgnoreCase) ||
+                d.Status.Equals("Em Classificação", StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+        }
+        catch (Exception)
+        {
+            return new();
+        }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem, Devolucao? Devolucao)> ConferirVolumesDevolucaoAsync(int id, string codigoLido, int volumesRecebidos, string usuario)
+    {
+        try
+        {
+            var payload = new { CodigoLido = codigoLido, VolumesRecebidos = volumesRecebidos, Usuario = usuario };
+            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/conferir-volumes", payload, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+            {
+                var dev = await response.Content.ReadFromJsonAsync<Devolucao>(_jsonOptions);
+                return (true, "Volumes conferidos com sucesso.", dev);
+            }
+
+            string erro = await ExtrairErroHttpAsync(response);
+            return (false, erro, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de Conexão: {ex.Message}", null);
+        }
+    }
+
+    public async Task<(bool Sucesso, bool AprovadaNaConferencia, string Mensagem, Devolucao? Devolucao)> ValidarItensDevolucaoAsync(int id, List<ItemBipadoDevolucaoInput> itensBipados, string usuario)
+    {
+        try
+        {
+            var payload = new { Usuario = usuario, ItensBipados = itensBipados };
+            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/validar-itens", payload, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadFromJsonAsync<ValidacaoItensResponseDto>(_jsonOptions);
+                return (true, json?.AprovadaNaConferencia ?? false, json?.Mensagem ?? string.Empty, json?.Devolucao);
+            }
+
+            string erro = await ExtrairErroHttpAsync(response);
+            return (false, false, erro, null);
+        }
+        catch (Exception ex)
+        {
+            return (false, false, $"Erro de Conexão: {ex.Message}", null);
+        }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> ClassificarItensDevolucaoAsync(int id, List<ItemClassificadoDevolucaoInput> itensClassificados, string usuario)
+    {
+        try
+        {
+            var payload = new { Usuario = usuario, ItensClassificados = itensClassificados };
+            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/classificar-itens", payload, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, "Devolução finalizada e estoque atualizado!");
+
+            string erro = await ExtrairErroHttpAsync(response);
+            return (false, erro);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de Conexão: {ex.Message}");
+        }
+    }
+
+    public async Task<List<ProdutoAvariado>> GetProdutosAvariadosAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+            return await _httpClient.GetFromJsonAsync<List<ProdutoAvariado>>("api/avariados", _jsonOptions, cts.Token) ?? new();
+        }
+        catch (Exception)
+        {
+            return new();
+        }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> RegistrarAvariaEstoqueAsync(string codItem, int quantidade, string motivoAvaria, string usuario)
+    {
+        try
+        {
+            var payload = new { CodItem = codItem, Quantidade = quantidade, MotivoAvaria = motivoAvaria, Usuario = usuario };
+            var response = await _httpClient.PostAsJsonAsync("api/avariados/registrar-estoque", payload, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, "Produto avariado registrado com sucesso!");
+
+            string erro = await ExtrairErroHttpAsync(response);
+            return (false, erro);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de Conexão: {ex.Message}");
+        }
+    }
+
+    private async Task<string> ExtrairErroHttpAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var dict = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>(_jsonOptions);
+            if (dict != null && dict.TryGetValue("message", out var msg))
+                return msg?.ToString() ?? $"HTTP {(int)response.StatusCode}";
+        }
+        catch { }
+        return $"HTTP {(int)response.StatusCode}";
+    }
+
+    private sealed class ValidacaoItensResponseDto
+    {
+        public bool AprovadaNaConferencia { get; set; }
+        public string Mensagem { get; set; } = string.Empty;
+        public Devolucao? Devolucao { get; set; }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> RecusarDevolucaoAsync(int id, string motivoRejeicao, string usuario)
+    {
+        try
+        {
+            var payload = new { MotivoRejeicao = motivoRejeicao, Usuario = usuario };
+            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/recusar", payload, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, "Devolução recusada na doca.");
+
+            string erro = await ExtrairErroHttpAsync(response);
+            return (false, erro);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de Conexão: {ex.Message}");
+        }
+    }
 }
 
 public class ProblemDetailsDto

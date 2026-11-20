@@ -11,9 +11,7 @@ public partial class MainPage : ContentPage
     private List<Pedido> _pedidosEmEspera = new();
     private List<Pedido> _pedidosAtivos = new();
 
-    // Evita que duas buscas na API rodem ao mesmo tempo
     private bool _carregandoPedidos;
-
     private string _termoPesquisadoAtual = string.Empty;
     private string _usuarioLogado => Preferences.Get("UsuarioNome", "NÃO IDENTIFICADO");
 
@@ -23,7 +21,6 @@ public partial class MainPage : ContentPage
         _pedidoService = pedidoService;
         BindingContext = this;
 
-        // Le o perfil salvo no login para saber quais abas mostrar
         string matriculaSalva = Preferences.Get("MatriculaLogada", "3");
         if (!int.TryParse(matriculaSalva, out _perfilLogado))
             _perfilLogado = 3;
@@ -31,14 +28,12 @@ public partial class MainPage : ContentPage
         AplicarRegrasDeAcessoPorPerfil();
     }
 
-    // Carrega os pedidos automaticamente sempre que esta tela aparece
     protected override async void OnAppearing()
     {
         base.OnAppearing();
         await CarregarPedidosAsync(viaPullToRefresh: false);
     }
 
-    // Define quais abas ficam visiveis de acordo com o cargo do usuario
     private void AplicarRegrasDeAcessoPorPerfil()
     {
         if (_perfilLogado == 1)
@@ -67,39 +62,45 @@ public partial class MainPage : ContentPage
         }
     }
 
-    // Abre o menu lateral expansivel (3 barras)
     private void OnMenuExpansivelClicked(object sender, EventArgs e)
     {
         OverlayMenuLateral.IsVisible = true;
     }
 
-    // Fecha o menu lateral pelo botao X
     private void OnFecharMenuLateralClicked(object sender, EventArgs e)
     {
         OverlayMenuLateral.IsVisible = false;
     }
 
-    // Fecha o menu lateral ao tocar fora dele
     private void OnFecharMenuLateralTapped(object sender, TappedEventArgs e)
     {
         OverlayMenuLateral.IsVisible = false;
     }
 
-    // Abre a tela dedicada de Estimativas ao clicar no card do menu lateral
     private async void OnCardEstimativasMenuTapped(object sender, TappedEventArgs e)
     {
         OverlayMenuLateral.IsVisible = false;
         await Navigation.PushAsync(new EstimativasPage(_pedidoService, _perfilLogado));
     }
 
-    // Abre a tela dedicada de Cotacoes ao clicar no card do menu lateral
     private async void OnCardCotacoesMenuTapped(object sender, TappedEventArgs e)
     {
         OverlayMenuLateral.IsVisible = false;
         await Navigation.PushAsync(new CotacoesPage(_pedidoService));
     }
 
-    // Abre o menu do usuario com opcao de relatorio (supervisor) ou sair
+    private async void OnCardDevolucoesMenuTapped(object sender, TappedEventArgs e)
+    {
+        OverlayMenuLateral.IsVisible = false;
+        await Navigation.PushAsync(new DevolucoesPage(_pedidoService));
+    }
+
+    private async void OnCardAvariadosMenuTapped(object sender, TappedEventArgs e)
+    {
+        OverlayMenuLateral.IsVisible = false;
+        await Navigation.PushAsync(new AvariadosPage(_pedidoService));
+    }
+
     private async void OnPerfilClicked(object sender, EventArgs e)
     {
         string nomePerfil = _perfilLogado switch
@@ -137,13 +138,11 @@ public partial class MainPage : ContentPage
         }
     }
 
-    // Executado quando o usuario puxa a lista de pedidos para baixo
     private async void OnPedidosRefreshing(object sender, EventArgs e)
     {
         await CarregarPedidosAsync(viaPullToRefresh: true);
     }
 
-    // Busca os pedidos e cotacoes na API e atualiza listas e contadores do menu
     private async Task CarregarPedidosAsync(bool viaPullToRefresh = false)
     {
         if (_carregandoPedidos)
@@ -164,6 +163,7 @@ public partial class MainPage : ContentPage
         {
             var todosPedidos = await _pedidoService.GetPedidosAsync();
             var cotacoesPendentes = await _pedidoService.GetCotacoesPendentesAsync();
+            var devolucoesAtivas = await _pedidoService.GetDevolucoesAtivasAsync();
 
             BannerConexao.IsVisible = false;
 
@@ -173,7 +173,7 @@ public partial class MainPage : ContentPage
 
             PedidosCollectionView.ItemsSource = _pedidosAtivos;
             AtualizarPedidosEmEspera(todosPedidos);
-            AtualizarPendenciasMenuLateral(todosPedidos, cotacoesPendentes.Count);
+            AtualizarPendenciasMenuLateral(todosPedidos, cotacoesPendentes.Count, devolucoesAtivas.Count);
         }
         catch (TaskCanceledException)
         {
@@ -198,8 +198,7 @@ public partial class MainPage : ContentPage
         }
     }
 
-    // Atualiza o contador das 3 barras e dos cards Estimativas e Cotacoes no menu lateral
-    private void AtualizarPendenciasMenuLateral(List<Pedido> todosPedidos, int totalCotacoesPendentes)
+    private void AtualizarPendenciasMenuLateral(List<Pedido> todosPedidos, int totalCotacoesPendentes, int totalDevolucoesAtivas)
     {
         int totalEstimativas = todosPedidos.Count(p =>
         {
@@ -217,7 +216,7 @@ public partial class MainPage : ContentPage
             return p.EstimativaPendenteSeparacao || p.EstimativaPendenteConferencia;
         });
 
-        int totalGeral = totalEstimativas + totalCotacoesPendentes;
+        int totalGeral = totalEstimativas + totalCotacoesPendentes + totalDevolucoesAtivas;
 
         BadgeMenuLabel.Text = totalGeral.ToString();
         BadgeMenuContainer.IsVisible = totalGeral > 0;
@@ -227,6 +226,9 @@ public partial class MainPage : ContentPage
 
         ContadorCotacoesMenuLabel.Text = totalCotacoesPendentes.ToString();
         BadgeCardCotacoes.IsVisible = totalCotacoesPendentes > 0;
+
+        ContadorDevolucoesMenuLabel.Text = totalDevolucoesAtivas.ToString();
+        BadgeCardDevolucoes.IsVisible = totalDevolucoesAtivas > 0;
     }
 
     private void ExibirSkeleton(bool visivel)

@@ -182,5 +182,43 @@ namespace LogisticaSatelite.Api.Controllers
             byte[] bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
             return File(bytes, "text/csv", $"Relatorio_Produtividade_{DateTime.Now:yyyyMMdd}.csv");
         }
+
+        // Planilha CSV de Produtos Avariados (alimentada pela triagem de devolucao e avarias bipadas no estoque)
+        [HttpGet("exportar-avariados-csv")]
+        public async Task<IActionResult> ExportarAvariadosCsv([FromQuery] string? operador)
+        {
+            var query = _context.ProdutosAvariados.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(operador) && !operador.Equals("Todos", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(a => a.RegistradoPor == operador);
+            }
+
+            var avariados = await query
+                .OrderByDescending(a => a.DataRegistro)
+                .ToListAsync();
+
+            var culturaBr = new CultureInfo("pt-BR");
+            var csv = new StringBuilder();
+
+            csv.AppendLine("ID Registro;SKU;Produto;Quantidade Avariada;Origem;ID Devolucao;ID Pedido;Motivo da Avaria;Registrado Por;Data e Hora Registro");
+
+            foreach (var av in avariados)
+            {
+                string sku = (av.CodItem ?? "-").Replace(";", ",");
+                string nome = (av.Nome ?? "-").Replace(";", ",");
+                string origem = (av.Origem ?? "-").Replace(";", ",");
+                string devId = av.DevolucaoId.HasValue ? $"#{av.DevolucaoId.Value:D4}" : "-";
+                string pedId = av.PedidoId.HasValue ? $"#{av.PedidoId.Value:D4}" : "-";
+                string motivo = string.IsNullOrWhiteSpace(av.MotivoAvaria) ? "-" : av.MotivoAvaria.Replace(";", ",");
+                string operadorReg = string.IsNullOrWhiteSpace(av.RegistradoPor) ? "-" : av.RegistradoPor.Replace(";", ",");
+                string dataReg = av.DataRegistro.ToString("yyyy-MM-dd HH:mm:ss", culturaBr);
+
+                csv.AppendLine($"{av.Id};{sku};{nome};{av.Quantidade};{origem};{devId};{pedId};{motivo};{operadorReg};{dataReg}");
+            }
+
+            byte[] bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+            return File(bytes, "text/csv", $"Relatorio_Avariados_{DateTime.Now:yyyyMMdd}.csv");
+        }
     }
 }

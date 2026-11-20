@@ -1,0 +1,269 @@
+﻿@page "/solicitar-devolucao"
+@using LogisticaSatelite.WebComercial.Models
+@using LogisticaSatelite.WebComercial.Services.Interfaces
+@using LogisticaSatelite.WebComercial.Services.Mock
+@using LogisticaSatelite.WebComercial.Services.Producao
+@inject ProducaoDevolucoesService ProducaoService
+@inject MockDevolucoesService MockService
+@inject NavigationManager Navigation
+
+<PageTitle>Solicitação de Devolução — Logística Satélite</PageTitle>
+
+<div class="min-vh-100 bg-light py-5 px-3">
+    <div class="container" style="max-width: 720px;">
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+            <div class="bg-dark text-white p-4">
+                <span class="badge bg-primary mb-2">PORTAL DO CLIENTE</span>
+                <h1 class="h4 fw-bold mb-1">Solicitação de Devolução de Mercadoria</h1>
+                <p class="small text-white-50 mb-0">
+                    Preencha os dados do seu pedido abaixo. Nossa equipe administrativa analisará a solicitação e liberará o envio.
+                </p>
+            </div>
+
+            <div class="card-body p-4">
+                @if (devolucaoCriada != null)
+                {
+                    <div class="alert alert-success rounded-3 p-4 mb-3">
+                        <h5 class="fw-bold mb-2">Solicitação #@devolucaoCriada.Id.ToString("D4") registrada com sucesso!</h5>
+                        <p class="small mb-2">
+                            Sua requisição foi enviada para análise do nosso setor administrativo.
+                        </p>
+                        @if (devolucaoCriada.EmiteNotaFiscal)
+                        {
+                            <p class="small mb-0">
+                                <strong>Modalidade:</strong> Cliente com Nota Fiscal (NF informada: <strong>@devolucaoCriada.NumeroNotaDevolucao</strong>).
+                            </p>
+                        }
+                        else
+                        {
+                            <p class="small mb-0">
+                                <strong>Modalidade:</strong> Cliente Pessoa Física (sem NF). Assim que aprovado, você receberá um <strong>Código de Autorização</strong> para identificar os volumes.
+                            </p>
+                        }
+                    </div>
+
+                    <button type="button" class="btn btn-outline-primary btn-sm" @onclick="ReiniciarFormulario">
+                        Fazer nova solicitação
+                    </button>
+                }
+                else
+                {
+                    <!-- Passo 1: Localizar Pedido -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">1. Informe o Número do Pedido</label>
+                        <div class="input-group">
+                            <span class="input-group-text">#</span>
+                            <input type="number" class="form-control" @bind="pedidoIdInput" placeholder="Ex: 1019" />
+                            <button type="button" class="btn btn-primary" disabled="@buscandoPedido" @onclick="BuscarPedidoAsync">
+                                @(buscandoPedido ? "Buscando..." : "Localizar Pedido")
+                            </button>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(mensagemErro))
+                    {
+                        <div class="alert alert-danger py-2 px-3 small">@mensagemErro</div>
+                    }
+
+                    @if (pedidoEncontrado != null)
+                    {
+                        <hr class="my-4" />
+
+                        <!-- Passo 2: Dados do Solicitante e Tipo Fiscal -->
+                        <h6 class="fw-bold mb-3">2. Dados do Cliente e Documentação</h6>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-7">
+                                <label class="form-label small fw-semibold">Nome / Razão Social *</label>
+                                <input type="text" class="form-control" @bind="clienteNome" />
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label small fw-semibold">CPF ou CNPJ *</label>
+                                <input type="text" class="form-control" @bind="documentoCliente" placeholder="000.000.000-00" />
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold d-block">Tipo de Emissão Fiscal *</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="tipoFiscal" id="tipoPF" checked="@(!emiteNotaFiscal)" @onchange="() => emiteNotaFiscal = false" />
+                                <label class="btn btn-outline-secondary" for="tipoPF">Cliente Físico (Não emito NF)</label>
+
+                                <input type="radio" class="btn-check" name="tipoFiscal" id="tipoPJ" checked="@emiteNotaFiscal" @onchange="() => emiteNotaFiscal = true" />
+                                <label class="btn btn-outline-secondary" for="tipoPJ">Emito Nota Fiscal de Devolução</label>
+                            </div>
+                        </div>
+
+                        @if (emiteNotaFiscal)
+                        {
+                            <div class="mb-3 p-3 bg-white border rounded-3">
+                                <label class="form-label small fw-semibold text-primary">Número ou Chave da Nota Fiscal de Devolução *</label>
+                                <input type="text" class="form-control" @bind="numeroNotaDevolucao" placeholder="Ex: NF-98452 ou Chave de Acesso" />
+                                <div class="form-text">Este código será bipado pela nossa equipe no recebimento físico.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-info py-2 px-3 small mb-3">
+                                Como você não emite NF, após a aprovação do ADM será gerado um <strong>Código de Autorização</strong> para você identificar a embalagem.
+                            </div>
+                        }
+
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-8">
+                                <label class="form-label small fw-semibold">Motivo da Devolução *</label>
+                                <input type="text" class="form-control" @bind="motivoGeral" placeholder="Ex: Produto avariado no transporte, pedido incorreto..." />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold">Qtd. de Volumes (Caixas) *</label>
+                                <input type="number" min="1" class="form-control" @bind="volumesInformados" />
+                            </div>
+                        </div>
+
+                        <!-- Passo 3: Selecao de Itens -->
+                        <h6 class="fw-bold mb-2">3. Selecione os Itens e Quantidades para Devolução</h6>
+                        <div class="table-responsive mb-4">
+                            <table class="table table-sm table-bordered align-middle bg-white">
+                                <thead class="table-light small">
+                                    <tr>
+                                        <th>SKU</th>
+                                        <th>Produto</th>
+                                        <th class="text-center">Disponível</th>
+                                        <th style="width: 130px;">Qtd. Devolver</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="small">
+                                    @foreach (var item in pedidoEncontrado.Itens)
+                                    {
+                                        <tr>
+                                            <td class="fw-semibold">@item.CodItem</td>
+                                            <td>@item.Nome</td>
+                                            <td class="text-center">@item.QuantidadeDisponivel</td>
+                                            <td>
+                                                <input type="number"
+                                                       min="0"
+                                                       max="@item.QuantidadeDisponivel"
+                                                       class="form-control form-control-sm text-center"
+                                                       @bind="item.QuantidadeSelecionada" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <button type="button" class="btn btn-success w-100 py-2 fw-semibold" disabled="@enviando" @onclick="EnviarSolicitacaoAsync">
+                            @(enviando ? "Enviando solicitação..." : "Solicitar Devolução")
+                        </button>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "mock")]
+    public string? ModoMockQuery { get; set; }
+
+    private IDevolucoesService ServiceAtivo =>
+        (ModoMockQuery == "1" || ModoMockQuery?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+            ? MockService
+            : ProducaoService;
+
+    private int? pedidoIdInput;
+    private bool buscandoPedido;
+    private bool enviando;
+    private string? mensagemErro;
+
+    private PedidoClienteDevolucaoDto? pedidoEncontrado;
+    private DevolucaoDto? devolucaoCriada;
+
+    private string clienteNome = string.Empty;
+    private string documentoCliente = string.Empty;
+    private bool emiteNotaFiscal;
+    private string numeroNotaDevolucao = string.Empty;
+    private string motivoGeral = string.Empty;
+    private int volumesInformados = 1;
+
+    private async Task BuscarPedidoAsync()
+    {
+        mensagemErro = null;
+        pedidoEncontrado = null;
+
+        if (!pedidoIdInput.HasValue || pedidoIdInput.Value <= 0)
+        {
+            mensagemErro = "Informe um número de pedido válido.";
+            return;
+        }
+
+        buscandoPedido = true;
+        var (sucesso, dados, erro) = await ServiceAtivo.BuscarPedidoClienteAsync(pedidoIdInput.Value);
+        buscandoPedido = false;
+
+        if (!sucesso || dados == null)
+        {
+            mensagemErro = erro ?? "Pedido não encontrado.";
+            return;
+        }
+
+        pedidoEncontrado = dados;
+        clienteNome = dados.ClienteNome;
+    }
+
+    private async Task EnviarSolicitacaoAsync()
+    {
+        mensagemErro = null;
+        if (pedidoEncontrado == null) return;
+
+        var itensEscolhidos = pedidoEncontrado.Itens
+            .Where(i => i.QuantidadeSelecionada > 0)
+            .Select(i => new ItemDevolucaoInputDto
+            {
+                CodItem = i.CodItem,
+                Quantidade = i.QuantidadeSelecionada
+            }).ToList();
+
+        if (!itensEscolhidos.Any())
+        {
+            mensagemErro = "Informe a quantidade de pelo menos 1 item para devolução.";
+            return;
+        }
+
+        var req = new CriarDevolucaoRequestDto
+        {
+            PedidoId = pedidoEncontrado.PedidoId,
+            ClienteNome = clienteNome,
+            DocumentoCliente = documentoCliente,
+            EmiteNotaFiscal = emiteNotaFiscal,
+            NumeroNotaDevolucao = emiteNotaFiscal ? numeroNotaDevolucao : null,
+            MotivoGeral = motivoGeral,
+            VolumesInformados = Math.Max(1, volumesInformados),
+            Itens = itensEscolhidos
+        };
+
+        enviando = true;
+        var (sucesso, dev, erro) = await ServiceAtivo.SolicitarDevolucaoAsync(req);
+        enviando = false;
+
+        if (!sucesso || dev == null)
+        {
+            mensagemErro = erro ?? "Erro ao registrar devolução.";
+            return;
+        }
+
+        devolucaoCriada = dev;
+    }
+
+    private void ReiniciarFormulario()
+    {
+        devolucaoCriada = null;
+        pedidoEncontrado = null;
+        pedidoIdInput = null;
+        documentoCliente = string.Empty;
+        numeroNotaDevolucao = string.Empty;
+        motivoGeral = string.Empty;
+        volumesInformados = 1;
+        mensagemErro = null;
+    }
+}

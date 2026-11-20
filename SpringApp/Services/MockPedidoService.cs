@@ -8,6 +8,59 @@ public class MockPedidoService : IPedidoService
 {
     private static readonly List<Pedido> _historicoRelatorio = new List<Pedido>();
 
+    private static readonly List<Devolucao> _devolucoesMock = new List<Devolucao>
+    {
+        new Devolucao
+        {
+            Id = 1,
+            PedidoId = 101,
+            ClienteNome = "AcquAmorim (Pessoa Física)",
+            DocumentoCliente = "389.451.220-10",
+            EmiteNotaFiscal = false,
+            CodigoAutorizacao = "DEV-0001",
+            MotivoGeral = "Tamanho incompatível",
+            Status = "Autorizada",
+            DataSolicitacao = DateTime.Now.AddMinutes(-30),
+            VolumesInformados = 1,
+            Itens = new List<ItemDevolucao>
+            {
+                new ItemDevolucao { Id = 1, DevolucaoId = 1, CodItem = "001", Nome = "Caixa Organizadora Plástica 30L", QuantidadeSolicitada = 2 }
+            }
+        },
+        new Devolucao
+        {
+            Id = 2,
+            PedidoId = 102,
+            ClienteNome = "Vinicius Comercial Ltda (Com NF)",
+            DocumentoCliente = "12.345.678/0001-99",
+            EmiteNotaFiscal = true,
+            NumeroNotaDevolucao = "NF-98452",
+            MotivoGeral = "Item enviado em duplicidade",
+            Status = "Autorizada",
+            DataSolicitacao = DateTime.Now.AddMinutes(-15),
+            VolumesInformados = 1,
+            Itens = new List<ItemDevolucao>
+            {
+                new ItemDevolucao { Id = 2, DevolucaoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", QuantidadeSolicitada = 3 }
+            }
+        }
+    };
+
+    private static readonly List<ProdutoAvariado> _avariadosMock = new List<ProdutoAvariado>
+    {
+        new ProdutoAvariado
+        {
+            Id = 1,
+            CodItem = "001",
+            Nome = "Caixa Organizadora Plástica 30L",
+            Quantidade = 2,
+            Origem = "Estoque Interno",
+            MotivoAvaria = "Tampa trincada na prateleira R1-A-01",
+            RegistradoPor = "Carlos Mendes",
+            DataRegistro = DateTime.Now.AddHours(-2)
+        }
+    };
+
     private static readonly List<Cotacao> _cotacoesMock = new List<Cotacao>
     {
         new Cotacao
@@ -506,5 +559,156 @@ public class MockPedidoService : IPedidoService
         cotacao.Status = "Respondida";
 
         return (true, string.Empty);
+    }
+
+    public async Task<List<Devolucao>> GetDevolucoesAtivasAsync()
+    {
+        await Task.Delay(150);
+        return _devolucoesMock.Where(d =>
+            d.Status.Equals("Autorizada", StringComparison.OrdinalIgnoreCase) ||
+            d.Status.Equals("Volumes Conferidos", StringComparison.OrdinalIgnoreCase) ||
+            d.Status.Equals("Em Classificação", StringComparison.OrdinalIgnoreCase)
+        ).OrderByDescending(d => d.Id).ToList();
+    }
+
+    public async Task<(bool Sucesso, string Mensagem, Devolucao? Devolucao)> ConferirVolumesDevolucaoAsync(int id, string codigoLido, int volumesRecebidos, string usuario)
+    {
+        await Task.Delay(150);
+        var dev = _devolucoesMock.FirstOrDefault(d => d.Id == id);
+        if (dev == null) return (false, "Devolução não encontrada.", null);
+
+        string codigoEsperado = dev.EmiteNotaFiscal
+            ? (dev.NumeroNotaDevolucao ?? string.Empty)
+            : (dev.CodigoAutorizacao ?? string.Empty);
+
+        if (string.IsNullOrWhiteSpace(codigoLido) || !codigoLido.Trim().Equals(codigoEsperado.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            string tipo = dev.EmiteNotaFiscal ? "NF de Devolução" : "Código de Autorização";
+            return (false, $"{tipo} não confere com o cadastrado ('{codigoEsperado}'). Verifique e tente novamente ou clique em Recusar.", null);
+        }
+
+        if (volumesRecebidos <= 0)
+            return (false, "Informe uma quantidade de volumes maior que zero.", null);
+
+        dev.VolumesRecebidos = volumesRecebidos;
+        dev.Status = "Volumes Conferidos";
+        return (true, "Volumes conferidos!", dev);
+    }
+
+    public async Task<(bool Sucesso, bool AprovadaNaConferencia, string Mensagem, Devolucao? Devolucao)> ValidarItensDevolucaoAsync(int id, List<ItemBipadoDevolucaoInput> itensBipados, string usuario)
+    {
+        await Task.Delay(150);
+        var dev = _devolucoesMock.FirstOrDefault(d => d.Id == id);
+        if (dev == null) return (false, false, "Devolução não encontrada.", null);
+
+        var divergencias = new List<string>();
+        foreach (var item in dev.Itens)
+        {
+            var lido = itensBipados.FirstOrDefault(x => x.CodItem.Equals(item.CodItem, StringComparison.OrdinalIgnoreCase));
+            int qtd = lido?.QuantidadeBipada ?? 0;
+            item.QuantidadeBipada = qtd;
+
+            if (qtd != item.QuantidadeSolicitada)
+                divergencias.Add($"{item.Nome} (Esperado: {item.QuantidadeSolicitada}, Bipado: {qtd})");
+        }
+
+        if (divergencias.Any())
+        {
+            return (true, false, "Contagem divergente do formulário:\n• " + string.Join("\n• ", divergencias) + "\n\nCorrija a bipagem ou clique em 'Recusar'.", dev);
+        }
+
+        dev.Status = "Em Classificação";
+        return (true, true, "Contagem conferida! Selecione o estado dos itens.", dev);
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> RecusarDevolucaoAsync(int id, string motivoRejeicao, string usuario)
+    {
+        await Task.Delay(150);
+        var dev = _devolucoesMock.FirstOrDefault(d => d.Id == id);
+        if (dev == null) return (false, "Devolução não encontrada.");
+
+        if (string.IsNullOrWhiteSpace(motivoRejeicao))
+            return (false, "Informe o motivo da recusa.");
+
+        dev.Status = "Recusada na Doca";
+        dev.MotivoRejeicao = motivoRejeicao.Trim();
+        return (true, "Devolução recusada na doca.");
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> ClassificarItensDevolucaoAsync(int id, List<ItemClassificadoDevolucaoInput> itensClassificados, string usuario)
+    {
+        await Task.Delay(150);
+        var dev = _devolucoesMock.FirstOrDefault(d => d.Id == id);
+        if (dev == null) return (false, "Devolução não encontrada.");
+
+        string op = ObterUsuarioLogado(usuario);
+
+        foreach (var item in dev.Itens)
+        {
+            var c = itensClassificados.FirstOrDefault(x => x.CodItem.Equals(item.CodItem, StringComparison.OrdinalIgnoreCase));
+            if (c == null || (c.QuantidadeBomEstado + c.QuantidadeAvariada) != item.QuantidadeSolicitada)
+                return (false, $"A soma de Bom Estado + Avariado de '{item.Nome}' deve ser {item.QuantidadeSolicitada}.");
+
+            item.QuantidadeBomEstado = c.QuantidadeBomEstado;
+            item.QuantidadeAvariada = c.QuantidadeAvariada;
+
+            if (c.QuantidadeAvariada > 0)
+            {
+                int novoAvId = _avariadosMock.Any() ? _avariadosMock.Max(a => a.Id) + 1 : 1;
+                _avariadosMock.Insert(0, new ProdutoAvariado
+                {
+                    Id = novoAvId,
+                    CodItem = item.CodItem,
+                    Nome = item.Nome,
+                    Quantidade = c.QuantidadeAvariada,
+                    Origem = $"Devolução #{dev.Id:D4}",
+                    DevolucaoId = dev.Id,
+                    PedidoId = dev.PedidoId,
+                    MotivoAvaria = string.IsNullOrWhiteSpace(c.MotivoAvaria) ? "Avaria constatada na triagem" : c.MotivoAvaria.Trim(),
+                    RegistradoPor = op,
+                    DataRegistro = DateTime.Now
+                });
+            }
+        }
+
+        dev.Status = "Concluida";
+        return (true, "Devolução concluída com sucesso!");
+    }
+
+    public async Task<List<ProdutoAvariado>> GetProdutosAvariadosAsync()
+    {
+        await Task.Delay(150);
+        return _avariadosMock.OrderByDescending(a => a.Id).ToList();
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> RegistrarAvariaEstoqueAsync(string codItem, int quantidade, string motivoAvaria, string usuario)
+    {
+        await Task.Delay(150);
+        if (string.IsNullOrWhiteSpace(codItem) || quantidade <= 0)
+            return (false, "Informe um SKU válido e quantidade maior que zero.");
+
+        string sku = codItem.Trim();
+        string nomeProduto = sku switch
+        {
+            "001" => "Caixa Organizadora Plástica 30L",
+            "002" => "Fita Adesiva Transparente 45mm x 100m",
+            "003" => "Bobina Plástico Bolha 1,20m x 100m",
+            _ => $"Produto SKU {sku}"
+        };
+
+        int novoId = _avariadosMock.Any() ? _avariadosMock.Max(a => a.Id) + 1 : 1;
+        _avariadosMock.Insert(0, new ProdutoAvariado
+        {
+            Id = novoId,
+            CodItem = sku,
+            Nome = nomeProduto,
+            Quantidade = quantidade,
+            Origem = "Estoque Interno",
+            MotivoAvaria = string.IsNullOrWhiteSpace(motivoAvaria) ? "Avaria identificada no estoque" : motivoAvaria.Trim(),
+            RegistradoPor = ObterUsuarioLogado(usuario),
+            DataRegistro = DateTime.Now
+        });
+
+        return (true, "Produto avariado registrado na lista!");
     }
 }

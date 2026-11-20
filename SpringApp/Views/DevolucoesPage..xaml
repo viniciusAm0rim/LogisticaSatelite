@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SpringApp.Views.DevolucoesPage"
+             NavigationPage.HasNavigationBar="False"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="#f8fafc">
+
+    <Grid>
+        <Grid RowDefinitions="Auto, *" Padding="16" RowSpacing="14">
+            <!-- Cabecalho sem BoxView preto -->
+            <Border Grid.Row="0" Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White" Padding="12">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="14"/>
+                </Border.StrokeShape>
+                <Grid ColumnDefinitions="Auto, *" VerticalOptions="Center">
+                    <Button Grid.Column="0"
+                            Clicked="OnVoltarClicked"
+                            BackgroundColor="#f1f5f9"
+                            TextColor="#334155"
+                            WidthRequest="40"
+                            HeightRequest="40"
+                            CornerRadius="12"
+                            Padding="0">
+                        <Button.ImageSource>
+                            <FontImageSource Glyph="&#xe5c4;" FontFamily="MaterialIcons" Color="#334155" Size="20"/>
+                        </Button.ImageSource>
+                    </Button>
+
+                    <Label Grid.Column="1"
+                           Text="DEVOLUÇÕES AUTORIZADAS"
+                           FontSize="15"
+                           FontAttributes="Bold"
+                           TextColor="#0f172a"
+                           HorizontalOptions="Center"
+                           HorizontalTextAlignment="Center"
+                           VerticalOptions="Center"
+                           Margin="0,0,40,0"/>
+                </Grid>
+            </Border>
+
+            <!-- Lista de devolucoes autorizadas / em conferencia / em classificacao -->
+            <RefreshView Grid.Row="1"
+                         x:Name="DevolucoesRefreshView"
+                         Refreshing="OnRefreshing"
+                         RefreshColor="#334155">
+                <CollectionView x:Name="DevolucoesCollectionView" SelectionMode="None">
+                    <CollectionView.EmptyView>
+                        <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="8" Padding="24">
+                            <Label Text="&#xe15e;" FontFamily="MaterialIcons" FontSize="38" HorizontalOptions="Center" TextColor="#94a3b8"/>
+                            <Label Text="Nenhuma devolução autorizada pendente." FontSize="14" TextColor="#94a3b8" HorizontalOptions="Center" FontAttributes="Bold"/>
+                            <Label Text="Puxe para baixo para atualizar" FontSize="12" TextColor="#94a3b8" HorizontalOptions="Center"/>
+                        </VerticalStackLayout>
+                    </CollectionView.EmptyView>
+
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,12" Padding="14" Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="16"/>
+                                </Border.StrokeShape>
+                                <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto" RowSpacing="8">
+                                    <Label Grid.Row="0" Grid.Column="0"
+                                           Text="{Binding Id, StringFormat='Devolução #{0:D4}'}"
+                                           FontSize="15"
+                                           FontAttributes="Bold"
+                                           TextColor="#0f172a"
+                                           VerticalOptions="Center"/>
+
+                                    <Border Grid.Row="0" Grid.Column="1" BackgroundColor="#dbeafe" Stroke="Transparent" Padding="8,3">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="8"/>
+                                        </Border.StrokeShape>
+                                        <Label Text="{Binding Status}" FontSize="11" FontAttributes="Bold" TextColor="#1d4ed8" VerticalOptions="Center"/>
+                                    </Border>
+
+                                    <VerticalStackLayout Grid.Row="1" Grid.Column="0" VerticalOptions="Center" Spacing="2">
+                                        <Label Text="{Binding ClienteNome}" FontSize="13" FontAttributes="Bold" TextColor="#334155"/>
+                                        <Label Text="{Binding PedidoId, StringFormat='Pedido #{0:D4}'}" FontSize="11" TextColor="#64748b"/>
+                                        <Label Text="{Binding DocumentoIdentificacaoLabel}" FontSize="11" TextColor="#2563eb" FontAttributes="Bold"/>
+                                    </VerticalStackLayout>
+
+                                    <Button Grid.Row="1" Grid.Column="1"
+                                            Text="{Binding TextoBotaoAcao}"
+                                            Clicked="OnAbrirEtapaDevolucaoClicked"
+                                            CommandParameter="{Binding .}"
+                                            BackgroundColor="#2563eb"
+                                            TextColor="White"
+                                            FontAttributes="Bold"
+                                            HeightRequest="38"
+                                            WidthRequest="125"
+                                            CornerRadius="10"
+                                            FontSize="11"
+                                            Padding="0"
+                                            VerticalOptions="Center"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </RefreshView>
+        </Grid>
+
+        <!-- Modal Etapa 1: Bipar Codigo Autorizacao (PF) ou NF Devolucao (PJ) + Volumes -->
+        <Grid x:Name="OverlayVolumes" BackgroundColor="#80000000" IsVisible="False" Padding="20">
+            <Border BackgroundColor="White" Padding="20" VerticalOptions="Center" HorizontalOptions="Center" WidthRequest="345">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16"/>
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="1. Conferência de Volumes" FontAttributes="Bold" FontSize="17" TextColor="#0f172a" HorizontalOptions="Center"/>
+                    <Label x:Name="LabelDocEsperado" Text="Bipe o código..." FontSize="12" TextColor="#2563eb" FontAttributes="Bold" HorizontalTextAlignment="Center"/>
+
+                    <Label Text="Bipar Código de Autorização ou NF:" FontSize="12" FontAttributes="Bold" TextColor="#334155"/>
+                    <Entry x:Name="CodigoDocumentoEntry" Placeholder="Bipe ou digite o código..." BackgroundColor="#f8fafc" TextColor="#0f172a"/>
+
+                    <Label Text="Quantidade de Volumes Recebidos:" FontSize="12" FontAttributes="Bold" TextColor="#334155"/>
+                    <Entry x:Name="VolumesRecebidosEntry" Placeholder="Ex: 1" Keyboard="Numeric" BackgroundColor="#f8fafc" TextColor="#0f172a"/>
+
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8" Margin="0,8,0,0">
+                        <Button Grid.Column="0" Text="Fechar" Clicked="OnFecharOverlaysClicked" BackgroundColor="#64748b" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42" FontSize="12"/>
+                        <Button Grid.Column="1" Text="Recusar" Clicked="OnRecusarDevolucaoClicked" BackgroundColor="#ef4444" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42" FontSize="12"/>
+                        <Button Grid.Column="2" Text="Confirmar" Clicked="OnConfirmarVolumesClicked" BackgroundColor="#10b981" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42" FontSize="12"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <!-- Modal Etapa 2: Bipagem dos Itens (Com Botao Explicito de Recusar) -->
+        <Grid x:Name="OverlayBipagemItens" BackgroundColor="#80000000" IsVisible="False" Padding="20">
+            <Border BackgroundColor="White" Padding="20" VerticalOptions="Center" HorizontalOptions="Center" WidthRequest="345" MaximumHeightRequest="580">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16"/>
+                </Border.StrokeShape>
+                <ScrollView>
+                    <VerticalStackLayout Spacing="12">
+                        <Label Text="2. Conferência dos Itens" FontAttributes="Bold" FontSize="17" TextColor="#0f172a" HorizontalOptions="Center"/>
+                        <Label Text="Bipe os itens físicos recebidos. Se houver divergência real, clique em Recusar." FontSize="11" TextColor="#64748b" HorizontalTextAlignment="Center"/>
+
+                        <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="6">
+                            <Entry Grid.Column="0" x:Name="BiparSkuDevolucaoEntry" Placeholder="Bipar SKU..." Completed="OnBiparItemDevolucaoCompleted" BackgroundColor="#f8fafc" TextColor="#0f172a"/>
+                            <Button Grid.Column="1" Text="Bipar" Clicked="OnBiparItemDevolucaoCompleted" BackgroundColor="#2563eb" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42" Padding="12,0" FontSize="12"/>
+                            <Button Grid.Column="2" Text="Zerar" Clicked="OnZerarContagemItensClicked" BackgroundColor="#e2e8f0" TextColor="#334155" FontAttributes="Bold" CornerRadius="8" HeightRequest="42" Padding="10,0" FontSize="12"/>
+                        </Grid>
+
+                        <StackLayout x:Name="ListaContagemItensStack" Spacing="8"/>
+
+                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8" Margin="0,10,0,0">
+                            <Button Grid.Column="0" Text="Fechar" Clicked="OnFecharOverlaysClicked" BackgroundColor="#64748b" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42" FontSize="12"/>
+                            <Button Grid.Column="1" Text="Recusar" Clicked="OnRecusarDevolucaoClicked" BackgroundColor="#ef4444" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42" FontSize="12"/>
+                            <Button Grid.Column="2" Text="Confirmar" Clicked="OnValidarContagemItensClicked" BackgroundColor="#10b981" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42" FontSize="12"/>
+                        </Grid>
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Border>
+        </Grid>
+
+        <!-- Modal Etapa 3: Classificacao (Bom Estado vs Avariado) -->
+        <Grid x:Name="OverlayClassificacao" BackgroundColor="#80000000" IsVisible="False" Padding="20">
+            <Border BackgroundColor="White" Padding="20" VerticalOptions="Center" HorizontalOptions="Center" WidthRequest="345" MaximumHeightRequest="580">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="16"/>
+                </Border.StrokeShape>
+                <ScrollView>
+                    <VerticalStackLayout Spacing="12">
+                        <Label Text="3. Classificar Estado dos Itens" FontAttributes="Bold" FontSize="17" TextColor="#0f172a" HorizontalOptions="Center"/>
+                        <Label Text="Itens em Bom Estado voltam ao estoque. Itens Avariados alimentam o relatório." FontSize="11" TextColor="#475569" HorizontalTextAlignment="Center"/>
+
+                        <StackLayout x:Name="ListaClassificacaoStack" Spacing="10"/>
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="12" Margin="0,10,0,0">
+                            <Button Grid.Column="0" Text="Fechar" Clicked="OnFecharOverlaysClicked" BackgroundColor="#64748b" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42"/>
+                            <Button Grid.Column="1" Text="Finalizar" Clicked="OnConfirmarClassificacaoClicked" BackgroundColor="#10b981" TextColor="White" FontAttributes="Bold" CornerRadius="8" HeightRequest="42"/>
+                        </Grid>
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Border>
+        </Grid>
+    </Grid>
+</ContentPage>

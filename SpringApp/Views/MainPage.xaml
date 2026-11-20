@@ -13,7 +13,6 @@
 
             <!-- Topo da tela com menu expansivel (3 barras) a esquerda e perfil a direita -->
             <Grid Grid.Row="0" ColumnDefinitions="Auto, *, Auto" VerticalOptions="Center">
-                <!-- Botao das 3 barras com contador de pendencias nao lidas -->
                 <Grid Grid.Column="0" WidthRequest="48" HeightRequest="48">
                     <Button Clicked="OnMenuExpansivelClicked"
                             BackgroundColor="#334155"
@@ -29,7 +28,6 @@
                         </Button.ImageSource>
                     </Button>
 
-                    <!-- Contador vermelho de notificacoes pendentes -->
                     <Border x:Name="BadgeMenuContainer"
                             IsVisible="False"
                             BackgroundColor="#ef4444"
@@ -54,7 +52,6 @@
                     </Border>
                 </Grid>
 
-                <!-- Botao de perfil a direita -->
                 <Button Grid.Column="2" Clicked="OnPerfilClicked" BackgroundColor="#e2e8f0" TextColor="#334155" WidthRequest="44" HeightRequest="44" CornerRadius="22" Padding="0">
                     <Button.ImageSource>
                         <FontImageSource Glyph="&#xe8b8;" FontFamily="MaterialIcons" Color="#334155" Size="20"/>
@@ -62,7 +59,7 @@
                 </Button>
             </Grid>
 
-            <!-- Aviso exibido quando a conexao com a API falha ou demora demais -->
+            <!-- Aviso de falha de conexao -->
             <Border x:Name="BannerConexao"
                     Grid.Row="1"
                     IsVisible="False"
@@ -88,7 +85,7 @@
             <!-- Barra de busca usada apenas na aba de expedicao -->
             <SearchBar x:Name="PesquisaExpedicaoBar" Grid.Row="2" IsVisible="False" Placeholder="Pesquisar Cliente ou Nº Pedido..." SearchButtonPressed="OnPesquisaExpedicaoPesquisar" TextChanged="OnPesquisaExpedicaoTextChanged" BackgroundColor="White" CancelButtonColor="#ef4444" HeightRequest="42" />
 
-            <!-- Bloco de pedidos que foram pausados na etapa atual -->
+            <!-- Bloco de pedidos em espera -->
             <Border x:Name="CardPedidosEmEspera" Grid.Row="3" IsVisible="False" Stroke="#f59e0b" StrokeThickness="1.5" BackgroundColor="#fffbeb" Padding="12">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="14"/>
@@ -105,7 +102,6 @@
                         </Border>
                     </Grid>
 
-                    <!-- Lista de pedidos pausados -->
                     <StackLayout x:Name="ListaPedidosEmEspera" Spacing="6">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
@@ -144,15 +140,9 @@
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Area da lista de pedidos com carregamento e puxar para atualizar -->
+            <!-- Area da lista de pedidos -->
             <Grid Grid.Row="4">
-                <!-- Blocos cinzas exibidos enquanto os dados carregam pela primeira vez -->
                 <VerticalStackLayout x:Name="SkeletonLoadingView" IsVisible="False" Spacing="12">
-                    <Border BackgroundColor="#e2e8f0" Stroke="Transparent" HeightRequest="80">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="16"/>
-                        </Border.StrokeShape>
-                    </Border>
                     <Border BackgroundColor="#e2e8f0" Stroke="Transparent" HeightRequest="80">
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="16"/>
@@ -165,7 +155,6 @@
                     </Border>
                 </VerticalStackLayout>
 
-                <!-- Permite puxar a lista para baixo para buscar novos pedidos -->
                 <RefreshView x:Name="PedidosRefreshView"
                              Refreshing="OnPedidosRefreshing"
                              RefreshColor="#334155">
@@ -178,7 +167,6 @@
                             </VerticalStackLayout>
                         </CollectionView.EmptyView>
 
-                        <!-- Modelo visual de cada card de pedido na fila -->
                         <CollectionView.ItemTemplate>
                             <DataTemplate>
                                 <Border Margin="0,0,0,12" Padding="14" Stroke="#e2e8f0" StrokeThickness="1" BackgroundColor="White">
@@ -222,7 +210,6 @@
             </Border.Shadow>
 
             <HorizontalStackLayout Spacing="8" HorizontalOptions="Center">
-                <!-- Aba de Separacao -->
                 <Grid x:Name="ContainerAbaSeparacao" WidthRequest="95" HeightRequest="60">
                     <Border x:Name="PillSeparacao" BackgroundColor="#475569" Stroke="Transparent" HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="60" HeightRequest="40">
                         <Border.StrokeShape>
@@ -236,7 +223,6 @@
                     <Button x:Name="AbaSeparacaoBtn" Clicked="OnAbaClicked" CommandParameter="Aguardando" BackgroundColor="Transparent"/>
                 </Grid>
 
-                <!-- Aba de Conferencia -->
                 <Grid x:Name="ContainerAbaConferencia" WidthRequest="95" HeightRequest="60">
                     <Border x:Name="PillConferencia" BackgroundColor="Transparent" Stroke="Transparent" HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="60" HeightRequest="40">
                         <Border.StrokeShape>
@@ -250,7 +236,6 @@
                     <Button x:Name="AbaConferenciaBtn" Clicked="OnAbaClicked" CommandParameter="Aguardando Conferencia" BackgroundColor="Transparent"/>
                 </Grid>
 
-                <!-- Aba de Expedicao -->
                 <Grid x:Name="ContainerAbaExpedicao" WidthRequest="95" HeightRequest="60">
                     <Border x:Name="PillExpedicao" BackgroundColor="Transparent" Stroke="Transparent" HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="60" HeightRequest="40">
                         <Border.StrokeShape>
@@ -266,98 +251,157 @@
             </HorizontalStackLayout>
         </Border>
 
-        <!-- Menu lateral expansivel (3 barras) com funcionalidades em segundo plano -->
+        <!-- Menu lateral expansivel (3 barras) com Estimativas, Cotacoes, Devolucoes e Avariados -->
         <Grid x:Name="OverlayMenuLateral" BackgroundColor="#800f172a" IsVisible="False">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="290"/>
+                <ColumnDefinition Width="295"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0" BackgroundColor="White" Stroke="Transparent" Padding="18">
-                <VerticalStackLayout Spacing="14">
-                    <!-- Cabecalho do menu lateral -->
-                    <Grid ColumnDefinitions="*, Auto" Margin="0,0,0,4">
-                        <Label Grid.Column="0" Text="Central de Tarefas" FontSize="18" FontAttributes="Bold" TextColor="#0f172a" VerticalOptions="Center"/>
-                        <Button Grid.Column="1" Text="X" Clicked="OnFecharMenuLateralClicked" BackgroundColor="#f1f5f9" TextColor="#334155" FontAttributes="Bold" WidthRequest="36" HeightRequest="36" CornerRadius="18" Padding="0"/>
-                    </Grid>
-
-                    <!-- Card clicavel de Estimativas na cor padrao -->
-                    <Border BackgroundColor="#f8fafc" Stroke="#e2e8f0" StrokeThickness="1.5" Padding="14">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="14"/>
-                        </Border.StrokeShape>
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnCardEstimativasMenuTapped"/>
-                        </Border.GestureRecognizers>
-                        <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="10" VerticalOptions="Center">
-                            <Border Grid.Column="0" BackgroundColor="#e2e8f0" Stroke="Transparent" WidthRequest="38" HeightRequest="38">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="10"/>
-                                </Border.StrokeShape>
-                                <Label Text="&#xe8b5;" FontFamily="MaterialIcons" FontSize="20" TextColor="#334155" HorizontalOptions="Center" VerticalOptions="Center"/>
-                            </Border>
-
-                            <Label Grid.Column="1" Text="Estimativas" FontSize="14" FontAttributes="Bold" TextColor="#0f172a" VerticalOptions="Center"/>
-
-                            <Border x:Name="BadgeCardEstimativas"
-                                    Grid.Column="2"
-                                    IsVisible="False"
-                                    BackgroundColor="#ef4444"
-                                    Stroke="Transparent"
-                                    MinimumWidthRequest="24"
-                                    HeightRequest="24"
-                                    Padding="7,0"
-                                    VerticalOptions="Center">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="12"/>
-                                </Border.StrokeShape>
-                                <Label x:Name="ContadorEstimativasMenuLabel" Text="0" FontSize="11" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center"/>
-                            </Border>
-
-                            <Label Grid.Column="3" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#64748b" VerticalOptions="Center"/>
+                <ScrollView>
+                    <VerticalStackLayout Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto" Margin="0,0,0,4">
+                            <Label Grid.Column="0" Text="Central de Tarefas" FontSize="18" FontAttributes="Bold" TextColor="#0f172a" VerticalOptions="Center"/>
+                            <Button Grid.Column="1" Text="X" Clicked="OnFecharMenuLateralClicked" BackgroundColor="#f1f5f9" TextColor="#334155" FontAttributes="Bold" WidthRequest="36" HeightRequest="36" CornerRadius="18" Padding="0"/>
                         </Grid>
-                    </Border>
 
-                    <!-- Card clicavel de Cotacoes na cor padrao -->
-                    <Border BackgroundColor="#f8fafc" Stroke="#e2e8f0" StrokeThickness="1.5" Padding="14">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="14"/>
-                        </Border.StrokeShape>
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnCardCotacoesMenuTapped"/>
-                        </Border.GestureRecognizers>
-                        <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="10" VerticalOptions="Center">
-                            <Border Grid.Column="0" BackgroundColor="#e2e8f0" Stroke="Transparent" WidthRequest="38" HeightRequest="38">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="10"/>
-                                </Border.StrokeShape>
-                                <Label Text="&#xe1a1;" FontFamily="MaterialIcons" FontSize="20" TextColor="#334155" HorizontalOptions="Center" VerticalOptions="Center"/>
-                            </Border>
+                        <!-- Card Estimativas -->
+                        <Border BackgroundColor="#f8fafc" Stroke="#e2e8f0" StrokeThickness="1.5" Padding="14">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="14"/>
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCardEstimativasMenuTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                <Border Grid.Column="0" BackgroundColor="#e2e8f0" Stroke="Transparent" WidthRequest="38" HeightRequest="38">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10"/>
+                                    </Border.StrokeShape>
+                                    <Label Text="&#xe8b5;" FontFamily="MaterialIcons" FontSize="20" TextColor="#334155" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                </Border>
 
-                            <Label Grid.Column="1" Text="Cotações" FontSize="14" FontAttributes="Bold" TextColor="#0f172a" VerticalOptions="Center"/>
+                                <Label Grid.Column="1" Text="Estimativas" FontSize="14" FontAttributes="Bold" TextColor="#0f172a" VerticalOptions="Center"/>
 
-                            <Border x:Name="BadgeCardCotacoes"
-                                    Grid.Column="2"
-                                    IsVisible="False"
-                                    BackgroundColor="#ef4444"
-                                    Stroke="Transparent"
-                                    MinimumWidthRequest="24"
-                                    HeightRequest="24"
-                                    Padding="7,0"
-                                    VerticalOptions="Center">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="12"/>
-                                </Border.StrokeShape>
-                                <Label x:Name="ContadorCotacoesMenuLabel" Text="0" FontSize="11" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center"/>
-                            </Border>
+                                <Border x:Name="BadgeCardEstimativas"
+                                        Grid.Column="2"
+                                        IsVisible="False"
+                                        BackgroundColor="#ef4444"
+                                        Stroke="Transparent"
+                                        MinimumWidthRequest="24"
+                                        HeightRequest="24"
+                                        Padding="7,0"
+                                        VerticalOptions="Center">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="12"/>
+                                    </Border.StrokeShape>
+                                    <Label x:Name="ContadorEstimativasMenuLabel" Text="0" FontSize="11" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                </Border>
 
-                            <Label Grid.Column="3" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#64748b" VerticalOptions="Center"/>
-                        </Grid>
-                    </Border>
-                </VerticalStackLayout>
+                                <Label Grid.Column="3" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#64748b" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Card Cotacoes -->
+                        <Border BackgroundColor="#f8fafc" Stroke="#e2e8f0" StrokeThickness="1.5" Padding="14">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="14"/>
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCardCotacoesMenuTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                <Border Grid.Column="0" BackgroundColor="#e2e8f0" Stroke="Transparent" WidthRequest="38" HeightRequest="38">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10"/>
+                                    </Border.StrokeShape>
+                                    <Label Text="&#xe1a1;" FontFamily="MaterialIcons" FontSize="20" TextColor="#334155" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                </Border>
+
+                                <Label Grid.Column="1" Text="Cotações" FontSize="14" FontAttributes="Bold" TextColor="#0f172a" VerticalOptions="Center"/>
+
+                                <Border x:Name="BadgeCardCotacoes"
+                                        Grid.Column="2"
+                                        IsVisible="False"
+                                        BackgroundColor="#ef4444"
+                                        Stroke="Transparent"
+                                        MinimumWidthRequest="24"
+                                        HeightRequest="24"
+                                        Padding="7,0"
+                                        VerticalOptions="Center">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="12"/>
+                                    </Border.StrokeShape>
+                                    <Label x:Name="ContadorCotacoesMenuLabel" Text="0" FontSize="11" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                </Border>
+
+                                <Label Grid.Column="3" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#64748b" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Card Devolucoes -->
+                        <Border BackgroundColor="#f8fafc" Stroke="#e2e8f0" StrokeThickness="1.5" Padding="14">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="14"/>
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCardDevolucoesMenuTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                <Border Grid.Column="0" BackgroundColor="#dbeafe" Stroke="Transparent" WidthRequest="38" HeightRequest="38">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10"/>
+                                    </Border.StrokeShape>
+                                    <Label Text="&#xe15e;" FontFamily="MaterialIcons" FontSize="20" TextColor="#2563eb" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                </Border>
+
+                                <Label Grid.Column="1" Text="Devoluções" FontSize="14" FontAttributes="Bold" TextColor="#0f172a" VerticalOptions="Center"/>
+
+                                <Border x:Name="BadgeCardDevolucoes"
+                                        Grid.Column="2"
+                                        IsVisible="False"
+                                        BackgroundColor="#ef4444"
+                                        Stroke="Transparent"
+                                        MinimumWidthRequest="24"
+                                        HeightRequest="24"
+                                        Padding="7,0"
+                                        VerticalOptions="Center">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="12"/>
+                                    </Border.StrokeShape>
+                                    <Label x:Name="ContadorDevolucoesMenuLabel" Text="0" FontSize="11" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                </Border>
+
+                                <Label Grid.Column="3" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#64748b" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Card Avariados (Modulo Independente) -->
+                        <Border BackgroundColor="#f8fafc" Stroke="#e2e8f0" StrokeThickness="1.5" Padding="14">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="14"/>
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCardAvariadosMenuTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                <Border Grid.Column="0" BackgroundColor="#fee2e2" Stroke="Transparent" WidthRequest="38" HeightRequest="38">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10"/>
+                                    </Border.StrokeShape>
+                                    <Label Text="&#xe002;" FontFamily="MaterialIcons" FontSize="20" TextColor="#dc2626" HorizontalOptions="Center" VerticalOptions="Center"/>
+                                </Border>
+
+                                <Label Grid.Column="1" Text="Avariados" FontSize="14" FontAttributes="Bold" TextColor="#0f172a" VerticalOptions="Center"/>
+
+                                <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#64748b" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
+                </ScrollView>
             </Border>
 
-            <!-- Area transparente a direita fecha o menu ao tocar -->
             <BoxView Grid.Column="1" Color="Transparent">
                 <BoxView.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnFecharMenuLateralTapped"/>
