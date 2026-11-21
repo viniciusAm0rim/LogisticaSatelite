@@ -10,6 +10,7 @@ namespace LogisticaSatelite.Api.Models
         public string Status { get; set; } = string.Empty;
         public int Volumes { get; set; }
         public double Peso { get; set; }
+        public string? ObservacaoConferencia { get; set; }
         public string? SepUser { get; set; }
         public string? ConfUser { get; set; }
         public string? ExpUser { get; set; }
@@ -23,11 +24,9 @@ namespace LogisticaSatelite.Api.Models
         public string? CancelUser { get; set; }
         public string? MotivoCancelamento { get; set; }
 
-        // Coluna unica que ja existe fisicamente no banco SQLite
         public int ErrosEvitados { get; set; } = 0;
         public string? LockedBy { get; set; }
 
-        // Controle de espera e pausa
         public bool EmEspera { get; set; } = false;
         public string? EtapaPausada { get; set; }
         public string? PausadoPor { get; set; }
@@ -35,12 +34,10 @@ namespace LogisticaSatelite.Api.Models
 
         public List<RegistroPausa> HistoricoPausas { get; set; } = new();
 
-        // Propriedades gerais da estimativa
         public bool EstimativaSolicitada { get; set; } = false;
         public string? SolicitanteEstimativa { get; set; }
         public string? DataHoraEstimada { get; set; }
 
-        // Controle das 2 etapas da estimativa (Separador -> Conferente)
         public bool EstimativaPendenteSeparacao { get; set; } = false;
         public string? EstimativaSeparacao { get; set; }
         public string? EstimativaSeparacaoUser { get; set; }

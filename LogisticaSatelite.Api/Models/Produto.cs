@@ -3,7 +3,8 @@
     public class Produto
     {
         public int Id { get; set; }
-        public string CodItem { get; set; } = string.Empty; // SKU para bipagem
+        public string CodItem { get; set; } = string.Empty; // SKU unitario para bipagem
+        public string CodCaixaFechada { get; set; } = string.Empty; // Codigo de barras da caixa fechada (ex: CX-001 ou DUN-14)
         public string Nome { get; set; } = string.Empty;
         public string Descricao { get; set; } = string.Empty;
         public int UnidadepCx { get; set; }

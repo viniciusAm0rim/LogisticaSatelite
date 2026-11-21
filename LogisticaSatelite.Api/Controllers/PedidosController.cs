@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using LogisticaSatelite.Api.Data;
@@ -15,6 +16,16 @@ namespace LogisticaSatelite.Api.Controllers
         public PedidosController(AppDbContext context)
         {
             _context = context;
+        }
+
+        // Ordena a rota: primeiro Rua (Rx-y-z) em ordem natural, depois Pulmao / Caixa Fechada (Ax-px) em ordem natural
+        private static List<ItemPedido> OrdenarRotaInteligente(IEnumerable<ItemPedido> itens)
+        {
+            return itens
+                .OrderBy(i => i.IsCaixaFechada ? 1 : 0)
+                .ThenBy(i => i.IsCaixaFechada ? i.LocalPulmao : i.LocalPicking, ComparadorEnderecoNatural.Instance)
+                .ThenBy(i => i.CodItem, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         // Registra qual operador assumiu o pedido
@@ -50,6 +61,11 @@ namespace LogisticaSatelite.Api.Controllers
             }
 
             var listapedidos = await query.ToListAsync();
+            foreach (var p in listapedidos)
+            {
+                p.Itens = OrdenarRotaInteligente(p.Itens);
+            }
+
             return Ok(listapedidos);
         }
 
@@ -66,10 +82,11 @@ namespace LogisticaSatelite.Api.Controllers
 
             if (pedido == null) return NotFound(new { message = $"Pedido #{Id} não encontrado." });
 
+            pedido.Itens = OrdenarRotaInteligente(pedido.Itens);
             return Ok(pedido);
         }
 
-        // Cria um novo pedido com itens e baixa estoque do picking
+        // Cria um novo pedido com itens, quebra de caixa fechada e baixa estoque do picking
         [HttpPost]
         public async Task<ActionResult<Pedido>> CreatePedido([FromBody] CriarPedidoSimplificadoDTO dto)
         {
@@ -108,30 +125,72 @@ namespace LogisticaSatelite.Api.Controllers
                     ErrosEvitados = 0
                 };
 
+                var itensGerados = new List<ItemPedido>();
+
                 foreach (var itemInput in dto.Itens)
                 {
                     var produtoDb = await _context.Produtos.FirstOrDefaultAsync(p => p.CodItem == itemInput.CodItem);
                     if (produtoDb == null) return BadRequest(new { message = $"Produto '{itemInput.CodItem}' não encontrado." });
 
-                    if (produtoDb.QtdPicking < itemInput.Quantidade)
+                    int qtdCx = produtoDb.UnidadepCx > 1 ? produtoDb.UnidadepCx : 0;
+                    bool temPulmao = !string.IsNullOrWhiteSpace(produtoDb.LocalPulmao);
+                    string codigoCaixa = !string.IsNullOrWhiteSpace(produtoDb.CodCaixaFechada)
+                        ? produtoDb.CodCaixaFechada.Trim()
+                        : $"CX-{produtoDb.CodItem}";
+
+                    int qtdCaixasFechadas = (qtdCx > 1 && temPulmao) ? (itemInput.Quantidade / qtdCx) : 0;
+                    int qtdUnidadesRua = (qtdCx > 1 && temPulmao) ? (itemInput.Quantidade % qtdCx) : itemInput.Quantidade;
+
+                    if (qtdUnidadesRua > 0 && produtoDb.QtdPicking < qtdUnidadesRua)
                     {
-                        produtoDb.QtdCxAbaste = (int)Math.Ceiling((double)(itemInput.Quantidade - produtoDb.QtdPicking) / (produtoDb.UnidadepCx > 0 ? produtoDb.UnidadepCx : 1));
+                        produtoDb.QtdCxAbaste = (int)Math.Ceiling((double)(qtdUnidadesRua - produtoDb.QtdPicking) / (produtoDb.UnidadepCx > 0 ? produtoDb.UnidadepCx : 1));
                     }
 
                     // Rota definida diretamente no banco de dados (0 = Comum | 1 = Area Tecnica)
-                    novoPedido.Itens.Add(new ItemPedido
+                    if (qtdUnidadesRua > 0)
                     {
-                        ProdutoId = produtoDb.Id,
-                        CodItem = produtoDb.CodItem,
-                        Nome = produtoDb.Nome,
-                        LocalPicking = produtoDb.LocalPicking,
-                        LocalPulmao = produtoDb.LocalPulmao,
-                        TipoRota = produtoDb.TipoRota,
-                        Quantidade = itemInput.Quantidade,
-                        ScansSep = 0,
-                        ScansConf = 0,
-                        ScansExp = 0
-                    });
+                        itensGerados.Add(new ItemPedido
+                        {
+                            ProdutoId = produtoDb.Id,
+                            CodItem = produtoDb.CodItem,
+                            CodCaixaFechada = codigoCaixa,
+                            Nome = produtoDb.Nome,
+                            LocalPicking = produtoDb.LocalPicking,
+                            LocalPulmao = produtoDb.LocalPulmao,
+                            IsCaixaFechada = false,
+                            QtdPorVolume = 1,
+                            TipoRota = produtoDb.TipoRota,
+                            Quantidade = qtdUnidadesRua,
+                            ScansSep = 0,
+                            ScansConf = 0,
+                            ScansExp = 0
+                        });
+                    }
+
+                    if (qtdCaixasFechadas > 0)
+                    {
+                        itensGerados.Add(new ItemPedido
+                        {
+                            ProdutoId = produtoDb.Id,
+                            CodItem = produtoDb.CodItem,
+                            CodCaixaFechada = codigoCaixa,
+                            Nome = $"{produtoDb.Nome} (Caixa Fechada c/ {qtdCx} un.)",
+                            LocalPicking = produtoDb.LocalPicking,
+                            LocalPulmao = produtoDb.LocalPulmao,
+                            IsCaixaFechada = true,
+                            QtdPorVolume = qtdCx,
+                            TipoRota = produtoDb.TipoRota,
+                            Quantidade = qtdCaixasFechadas,
+                            ScansSep = 0,
+                            ScansConf = 0,
+                            ScansExp = 0
+                        });
+                    }
+                }
+
+                foreach (var itemOrdenado in OrdenarRotaInteligente(itensGerados))
+                {
+                    novoPedido.Itens.Add(itemOrdenado);
                 }
 
                 _context.Pedidos.Add(novoPedido);
@@ -141,6 +200,11 @@ namespace LogisticaSatelite.Api.Controllers
                     .Include(p => p.Itens).ThenInclude(i => i.Produto)
                     .Include(p => p.VolumesPedidos)
                     .FirstOrDefaultAsync(p => p.Id == novoPedido.Id);
+
+                if (pedidoCriado != null)
+                {
+                    pedidoCriado.Itens = OrdenarRotaInteligente(pedidoCriado.Itens);
+                }
 
                 return Ok(pedidoCriado);
             }
@@ -208,7 +272,9 @@ namespace LogisticaSatelite.Api.Controllers
                 {
                     var itemDb = itensDaRotaAtual.FirstOrDefault(i =>
                         (itemDto.Id > 0 && i.Id == itemDto.Id) ||
-                        (!string.IsNullOrEmpty(itemDto.CodItem) && i.CodItem.Equals(itemDto.CodItem, StringComparison.OrdinalIgnoreCase)));
+                        (!string.IsNullOrEmpty(itemDto.CodItem) &&
+                         i.CodItem.Equals(itemDto.CodItem, StringComparison.OrdinalIgnoreCase) &&
+                         i.IsCaixaFechada == itemDto.IsCaixaFechada));
 
                     if (itemDb != null)
                     {
@@ -402,7 +468,9 @@ namespace LogisticaSatelite.Api.Controllers
                 {
                     var itemDb = pedido.Itens.FirstOrDefault(i =>
                         (itemDto.Id > 0 && i.Id == itemDto.Id) ||
-                        (!string.IsNullOrEmpty(itemDto.CodItem) && i.CodItem == itemDto.CodItem));
+                        (!string.IsNullOrEmpty(itemDto.CodItem) &&
+                         i.CodItem == itemDto.CodItem &&
+                         i.IsCaixaFechada == itemDto.IsCaixaFechada));
 
                     if (itemDb != null)
                     {
@@ -694,6 +762,40 @@ namespace LogisticaSatelite.Api.Controllers
         }
     }
 
+    public sealed class ComparadorEnderecoNatural : IComparer<string?>
+    {
+        public static readonly ComparadorEnderecoNatural Instance = new();
+        private static readonly Regex TokenRegex = new(@"(\d+|\D+)", RegexOptions.Compiled);
+
+        public int Compare(string? x, string? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (string.IsNullOrWhiteSpace(x)) return 1;
+            if (string.IsNullOrWhiteSpace(y)) return -1;
+
+            var tokensX = TokenRegex.Matches(x.Trim().ToUpperInvariant());
+            var tokensY = TokenRegex.Matches(y.Trim().ToUpperInvariant());
+
+            int limite = Math.Min(tokensX.Count, tokensY.Count);
+            for (int i = 0; i < limite; i++)
+            {
+                string tx = tokensX[i].Value;
+                string ty = tokensY[i].Value;
+
+                bool numX = int.TryParse(tx, out int nx);
+                bool numY = int.TryParse(ty, out int ny);
+
+                int cmp = (numX && numY)
+                    ? nx.CompareTo(ny)
+                    : string.Compare(tx, ty, StringComparison.OrdinalIgnoreCase);
+
+                if (cmp != 0) return cmp;
+            }
+
+            return tokensX.Count.CompareTo(tokensY.Count);
+        }
+    }
+
     public class EtapaRequestDTO
     {
         public string? Usuario { get; set; }
@@ -723,6 +825,7 @@ namespace LogisticaSatelite.Api.Controllers
     {
         public int Id { get; set; }
         public string CodItem { get; set; } = string.Empty;
+        public bool IsCaixaFechada { get; set; }
         public int ScansSep { get; set; }
         public int ScansConf { get; set; }
     }

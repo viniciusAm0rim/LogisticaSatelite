@@ -106,14 +106,14 @@
 
                                     <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="0">
                                         <Label Text="{Binding Nome}" FontAttributes="Bold" FontSize="14" TextColor="#0f172a"/>
-                                        <Label Text="{Binding CodItem, StringFormat='Cód: {0}'}" FontSize="9" TextColor="#64748b"/>
+                                        <Label Text="{Binding CodigoExibicaoTexto}" FontSize="10" TextColor="#64748b"/>
                                     </VerticalStackLayout>
 
-                                    <Border Grid.Row="1" Grid.Column="0" BackgroundColor="#fef3c7" Stroke="Transparent" Padding="8,2" HorizontalOptions="Start" Margin="0,4,0,0">
+                                    <Border Grid.Row="1" Grid.Column="0" BackgroundColor="{Binding LocalCorFundo}" Stroke="Transparent" Padding="8,2" HorizontalOptions="Start" Margin="0,4,0,0">
                                         <Border.StrokeShape>
                                             <RoundRectangle CornerRadius="6"/>
                                         </Border.StrokeShape>
-                                        <Label Text="{Binding LocalPicking}" FontSize="11" FontAttributes="Bold" TextColor="#d97706"/>
+                                        <Label Text="{Binding LocalExibicao}" FontSize="11" FontAttributes="Bold" TextColor="{Binding LocalCorTexto}"/>
                                     </Border>
 
                                     <Label Grid.Row="2" Grid.Column="0" Text="{Binding ProgressoSeparacaoTexto}" FontSize="11" TextColor="#64748b"/>

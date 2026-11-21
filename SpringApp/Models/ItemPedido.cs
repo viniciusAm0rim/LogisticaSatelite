@@ -18,9 +18,13 @@ public class ItemPedido : INotifyPropertyChanged
     public int ProdutoId { get; set; }
 
     public string CodItem { get; set; } = string.Empty;
+    public string CodCaixaFechada { get; set; } = string.Empty;
     public string Nome { get; set; } = string.Empty;
     public string LocalPicking { get; set; } = string.Empty;
     public string LocalPulmao { get; set; } = string.Empty;
+
+    public bool IsCaixaFechada { get; set; } = false;
+    public int QtdPorVolume { get; set; } = 1;
 
     private int _tipoRota;
     [JsonPropertyName("tipoRota")]
@@ -79,15 +83,45 @@ public class ItemPedido : INotifyPropertyChanged
         }
     }
 
+    [JsonIgnore]
+    public string CodigoBipagemEsperado =>
+        IsCaixaFechada && !string.IsNullOrWhiteSpace(CodCaixaFechada)
+            ? CodCaixaFechada.Trim()
+            : CodItem.Trim();
+
+    [JsonIgnore]
+    public string LocalExibicao =>
+        IsCaixaFechada
+            ? (string.IsNullOrWhiteSpace(LocalPulmao) ? "PULMÃO" : $"PULMÃO: {LocalPulmao}")
+            : (string.IsNullOrWhiteSpace(LocalPicking) ? "RUA" : $"RUA: {LocalPicking}");
+
+    [JsonIgnore]
+    public string LocalCorFundo => IsCaixaFechada ? "#ede9fe" : "#fef3c7";
+
+    [JsonIgnore]
+    public string LocalCorTexto => IsCaixaFechada ? "#6d28d9" : "#d97706";
+
+    [JsonIgnore]
+    public string CodigoExibicaoTexto =>
+        IsCaixaFechada
+            ? $"Cód. Caixa Fechada: {CodigoBipagemEsperado} ({QtdPorVolume} un./cx)"
+            : $"Cód: {CodItem}";
+
     public int SeparacaoPendente => Math.Max(0, Quantidade - BipagensSeparacao);
     public int ConferenciaPendente => Math.Max(0, Quantidade - BipagensConferencia);
 
-    public string ProgressoSeparacaoTexto => $"Progresso: {BipagensSeparacao} de {Quantidade}";
+    public string ProgressoSeparacaoTexto => IsCaixaFechada
+        ? $"Progresso: {BipagensSeparacao} de {Quantidade} cx"
+        : $"Progresso: {BipagensSeparacao} de {Quantidade}";
+
     public string BotaoSeparacaoTexto => SeparacaoPendente <= 0 ? "✔ Concluído" : $"Faltam {SeparacaoPendente}";
     public string BotaoSeparacaoCorFundo => SeparacaoPendente <= 0 ? "#dcfce7" : "#fef3c7";
     public string BotaoSeparacaoCorTexto => SeparacaoPendente <= 0 ? "#15803d" : "#b45309";
 
-    public string ProgressoConferenciaTexto => $"Progresso: {BipagensConferencia} de {Quantidade}";
+    public string ProgressoConferenciaTexto => IsCaixaFechada
+        ? $"Progresso: {BipagensConferencia} de {Quantidade} cx"
+        : $"Progresso: {BipagensConferencia} de {Quantidade}";
+
     public string BotaoConferenciaTexto => ConferenciaPendente <= 0 ? "✔ Concluído" : $"Faltam {ConferenciaPendente}";
     public string BotaoConferenciaCorFundo => ConferenciaPendente <= 0 ? "#dcfce7" : "#fef3c7";
     public string BotaoConferenciaCorTexto => ConferenciaPendente <= 0 ? "#15803d" : "#b45309";

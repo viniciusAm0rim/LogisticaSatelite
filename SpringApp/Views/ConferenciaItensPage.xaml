@@ -216,5 +216,59 @@
                 </VerticalStackLayout>
             </Border>
         </Grid>
+
+        <!-- Modal sobreposto de Volumes e Observacoes (unico e igual para todos os modais) -->
+        <Grid x:Name="OverlayVolumesObservacao" Grid.RowSpan="2" BackgroundColor="#990f172a" IsVisible="False" Padding="20">
+            <Border BackgroundColor="White" Padding="22" VerticalOptions="Center" HorizontalOptions="Fill" MaximumWidthRequest="400">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="18"/>
+                </Border.StrokeShape>
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="Concluir Conferência" FontAttributes="Bold" FontSize="18" TextColor="#0f172a" HorizontalTextAlignment="Center"/>
+
+                    <!-- Quantidade de Volumes -->
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="Quantidade de Volumes (Caixas)" FontSize="12" FontAttributes="Bold" TextColor="#334155"/>
+                        <Grid ColumnDefinitions="46, *, 46" ColumnSpacing="8">
+                            <Button Grid.Column="0" Text="-" Clicked="OnDiminuirVolumesClicked" BackgroundColor="#e2e8f0" TextColor="#0f172a" FontAttributes="Bold" FontSize="18" CornerRadius="10" HeightRequest="44" Padding="0"/>
+                            <Border Grid.Column="1" BackgroundColor="#f8fafc" Stroke="#cbd5e1" StrokeThickness="1" Padding="10,0">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10"/>
+                                </Border.StrokeShape>
+                                <Entry x:Name="QtdVolumesEntry"
+                                       Text="1"
+                                       Keyboard="Numeric"
+                                       HorizontalTextAlignment="Center"
+                                       FontSize="16"
+                                       FontAttributes="Bold"
+                                       TextColor="#0f172a"/>
+                            </Border>
+                            <Button Grid.Column="2" Text="+" Clicked="OnAumentarVolumesClicked" BackgroundColor="#e2e8f0" TextColor="#0f172a" FontAttributes="Bold" FontSize="18" CornerRadius="10" HeightRequest="44" Padding="0"/>
+                        </Grid>
+                    </VerticalStackLayout>
+
+                    <!-- Campo Observacoes (valido para todos os modais) -->
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="Observações" FontSize="12" FontAttributes="Bold" TextColor="#334155"/>
+                        <Border BackgroundColor="#f8fafc" Stroke="#cbd5e1" StrokeThickness="1" Padding="10,6">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="10"/>
+                            </Border.StrokeShape>
+                            <Editor x:Name="ObservacaoConferenciaEditor"
+                                    Placeholder="Digite observações da conferência (opcional)..."
+                                    HeightRequest="100"
+                                    FontSize="14"
+                                    TextColor="#0f172a"
+                                    AutoSize="Disabled"/>
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="12" Margin="0,4,0,0">
+                        <Button Grid.Column="0" Text="Voltar" Clicked="OnCancelarModalVolumesObservacaoClicked" BackgroundColor="#f1f5f9" TextColor="#475569" FontAttributes="Bold" CornerRadius="10" HeightRequest="44"/>
+                        <Button Grid.Column="1" Text="Concluir" Clicked="OnConfirmarVolumesObservacaoClicked" BackgroundColor="#10b981" TextColor="White" FontAttributes="Bold" CornerRadius="10" HeightRequest="44"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
     </Grid>
 </ContentPage>

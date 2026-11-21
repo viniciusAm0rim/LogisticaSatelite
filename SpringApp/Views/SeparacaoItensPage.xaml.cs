@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SpringApp.Helpers;
 using SpringApp.Models;
 using SpringApp.Services;
@@ -74,6 +75,34 @@ public partial class SeparacaoItensPage : ContentPage
 
     protected override bool OnBackButtonPressed() => true;
 
+    private static int CompararEnderecoNatural(string? x, string? y)
+    {
+        if (ReferenceEquals(x, y)) return 0;
+        if (string.IsNullOrWhiteSpace(x)) return 1;
+        if (string.IsNullOrWhiteSpace(y)) return -1;
+
+        var tokensX = Regex.Matches(x.Trim().ToUpperInvariant(), @"(\d+|\D+)");
+        var tokensY = Regex.Matches(y.Trim().ToUpperInvariant(), @"(\d+|\D+)");
+
+        int limite = Math.Min(tokensX.Count, tokensY.Count);
+        for (int i = 0; i < limite; i++)
+        {
+            string tx = tokensX[i].Value;
+            string ty = tokensY[i].Value;
+
+            bool numX = int.TryParse(tx, out int nx);
+            bool numY = int.TryParse(ty, out int ny);
+
+            int cmp = (numX && numY)
+                ? nx.CompareTo(ny)
+                : string.Compare(tx, ty, StringComparison.OrdinalIgnoreCase);
+
+            if (cmp != 0) return cmp;
+        }
+
+        return tokensX.Count.CompareTo(tokensY.Count);
+    }
+
     private async Task CarregarPedidoDaApiAsync()
     {
         try
@@ -89,9 +118,13 @@ public partial class SeparacaoItensPage : ContentPage
 
         CardNotificacaoEstimativaSep.IsVisible = _pedido.EstimativaPendenteSeparacao;
 
-        // Filtra apenas os itens comuns (TipoRota == 0)
+        // Filtra apenas os itens comuns (TipoRota == 0) e aplica a Rota Inteligente:
+        // 1º Rua (Rx-y-z) em ordem natural | 2º Pulmao / Caixa Fechada (Ax-px) em ordem natural
         _itensComuns = (_pedido.Itens ?? new List<ItemPedido>())
             .Where(i => i.TipoRota == 0)
+            .OrderBy(i => i.IsCaixaFechada ? 1 : 0)
+            .ThenBy(i => i.IsCaixaFechada ? i.LocalPulmao : i.LocalPicking, Comparer<string?>.Create(CompararEnderecoNatural))
+            .ThenBy(i => i.CodItem, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         ItensCollectionView.ItemsSource = _itensComuns;
@@ -103,7 +136,7 @@ public partial class SeparacaoItensPage : ContentPage
     {
         _bloqueioFoco = true;
         int faltam = _itensComuns.Sum(i => i.SeparacaoPendente);
-        LabelResumoItensSep.Text = $"Faltam separar {faltam} unidades neste pedido";
+        LabelResumoItensSep.Text = $"Faltam separar {faltam} volumes/unidades neste pedido";
         EstimativaSepDatePicker.Date = DateTime.Today;
         EstimativaSepTimePicker.Time = DateTime.Now.TimeOfDay;
         OverlayEstimativaSep.IsVisible = true;
@@ -177,9 +210,25 @@ public partial class SeparacaoItensPage : ContentPage
         }
     }
 
+    private ItemPedido? BuscarItemPorCodigoBipado(string codigo)
+    {
+        string codLimpo = codigo.Trim();
+
+        // Prioriza item pendente que exija exatamente o codigo bipado (ex: CX-001 para caixa fechada ou 001 para avulso)
+        var pendente = _itensComuns.FirstOrDefault(i =>
+            i.SeparacaoPendente > 0 &&
+            i.CodigoBipagemEsperado.Equals(codLimpo, StringComparison.OrdinalIgnoreCase));
+
+        if (pendente != null) return pendente;
+
+        // Caso ja esteja concluido, verifica se o codigo pertence a algum item da lista para nao acusar erro falso
+        return _itensComuns.FirstOrDefault(i =>
+            i.CodigoBipagemEsperado.Equals(codLimpo, StringComparison.OrdinalIgnoreCase));
+    }
+
     private async Task ValidarCodigoLidoAsync(string codigo)
     {
-        var item = _itensComuns.FirstOrDefault(i => i.CodItem.Equals(codigo, StringComparison.OrdinalIgnoreCase));
+        var item = BuscarItemPorCodigoBipado(codigo);
 
         if (item != null)
         {
@@ -191,7 +240,16 @@ public partial class SeparacaoItensPage : ContentPage
             _bloqueioFoco = true;
             try
             {
-                await DisplayAlert("Atenção", "Código inválido ou pertencente à Área Técnica.", "OK");
+                bool bipouAvulsoEmCaixaFechada = _itensComuns.Any(i =>
+                    i.IsCaixaFechada &&
+                    i.SeparacaoPendente > 0 &&
+                    i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                string msgAlerta = bipouAvulsoEmCaixaFechada
+                    ? "Este item exige a bipagem do código de CAIXA FECHADA no Pulmão!"
+                    : "Código inválido ou pertencente à Área Técnica.";
+
+                await DisplayAlert("Atenção", msgAlerta, "OK");
             }
             finally
             {
@@ -207,10 +265,10 @@ public partial class SeparacaoItensPage : ContentPage
         _bloqueioFoco = true;
         try
         {
-            string codigo = await DisplayPromptAsync("Manual", "Informe o SKU:", "Confirmar", "Cancelar");
+            string codigo = await DisplayPromptAsync("Manual", "Informe o SKU ou Código da Caixa Fechada:", "Confirmar", "Cancelar");
             if (!string.IsNullOrWhiteSpace(codigo))
             {
-                var item = _itensComuns.FirstOrDefault(i => i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
+                var item = BuscarItemPorCodigoBipado(codigo);
                 if (item != null)
                 {
                     ProcessarBipagemItem(item);
@@ -218,7 +276,16 @@ public partial class SeparacaoItensPage : ContentPage
                 else
                 {
                     _errosEvitados++;
-                    await DisplayAlert("Erro", "Produto não encontrado nesta lista.", "OK");
+                    bool bipouAvulsoEmCaixaFechada = _itensComuns.Any(i =>
+                        i.IsCaixaFechada &&
+                        i.SeparacaoPendente > 0 &&
+                        i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                    string msgErro = bipouAvulsoEmCaixaFechada
+                        ? "Informe o código da CAIXA FECHADA (não o SKU unitário)."
+                        : "Produto não encontrado nesta lista.";
+
+                    await DisplayAlert("Erro", msgErro, "OK");
                 }
             }
         }

@@ -1,17 +1,34 @@
-﻿using SpringApp.Models;
-using System.Net.Http.Json;
+﻿using System.Net.Http.Json;
 using System.Text.Json;
+using SpringApp.Models;
 
 namespace SpringApp.Services;
 
-public class ApiServices : IPedidoService
+public class ApiService : IPedidoService
 {
     private readonly HttpClient _httpClient;
     private readonly JsonSerializerOptions _jsonOptions;
 
-    public ApiServices(HttpClient httpClient)
+    private string BaseUrl => Preferences.Get("ApiUrl", "http://192.168.15.12:5283").TrimEnd('/');
+
+    public ApiService(HttpClient? httpClient = null)
     {
-        _httpClient = httpClient;
+        if (httpClient != null)
+        {
+            _httpClient = httpClient;
+            if (_httpClient.BaseAddress == null)
+            {
+                _httpClient.BaseAddress = new Uri($"{BaseUrl}/");
+            }
+        }
+        else
+        {
+            _httpClient = new HttpClient
+            {
+                BaseAddress = new Uri($"{BaseUrl}/"),
+                Timeout = TimeSpan.FromSeconds(15)
+            };
+        }
 
         _jsonOptions = new JsonSerializerOptions
         {
@@ -21,53 +38,50 @@ public class ApiServices : IPedidoService
 
     public async Task<List<Pedido>> GetPedidosAsync()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-        return await _httpClient.GetFromJsonAsync<List<Pedido>>("api/pedidos", _jsonOptions, cts.Token) ?? new();
+        var response = await _httpClient.GetAsync("api/pedidos");
+        response.EnsureSuccessStatusCode();
+        var pedidos = await response.Content.ReadFromJsonAsync<List<Pedido>>(_jsonOptions);
+        return pedidos ?? new List<Pedido>();
     }
 
     public async Task<List<Pedido>> ObterPorStatusAsync(string status)
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-            string endpoint = string.IsNullOrEmpty(status)
-                ? "api/pedidos"
-                : $"api/pedidos?status={Uri.EscapeDataString(status)}";
-            var lista = await _httpClient.GetFromJsonAsync<List<Pedido>>(endpoint, _jsonOptions, cts.Token) ?? new();
-            return lista.Where(p => !p.EmEspera).ToList();
+            var response = await _httpClient.GetAsync($"api/pedidos?status={Uri.EscapeDataString(status)}");
+            if (response.IsSuccessStatusCode)
+            {
+                var pedidos = await response.Content.ReadFromJsonAsync<List<Pedido>>(_jsonOptions);
+                return pedidos ?? new List<Pedido>();
+            }
+            return new List<Pedido>();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return new();
+            Console.WriteLine($"[ApiService] Erro ao filtrar pedidos por status: {ex.Message}");
+            return new List<Pedido>();
         }
     }
 
     public async Task<List<Pedido>> ObterPorClienteAsync(string termoCliente)
     {
-        try
-        {
-            var todos = await GetPedidosAsync();
-            if (string.IsNullOrWhiteSpace(termoCliente)) return todos;
-            termoCliente = termoCliente.ToLower().Trim();
-            return todos.Where(p =>
-                (!string.IsNullOrEmpty(p.Cliente) && p.Cliente.ToLower().Contains(termoCliente)) ||
-                p.IdPedido.ToString() == termoCliente
-            ).ToList();
-        }
-        catch (Exception)
-        {
-            return new();
-        }
+        var todos = await GetPedidosAsync();
+        if (string.IsNullOrWhiteSpace(termoCliente)) return todos;
+        return todos.Where(p => p.Cliente != null && p.Cliente.Contains(termoCliente, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
     public async Task<Pedido?> GetPedidoPorIdAsync(int id)
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-            return await _httpClient.GetFromJsonAsync<Pedido>($"api/pedidos/{id}", _jsonOptions, cts.Token);
+            var response = await _httpClient.GetAsync($"api/pedidos/{id}");
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadFromJsonAsync<Pedido>(_jsonOptions);
+            }
+            return null;
         }
-        catch (Exception)
+        catch
         {
             return null;
         }
@@ -87,51 +101,51 @@ public class ApiServices : IPedidoService
         }
     }
 
-    public async Task<(bool Sucesso, string Mensagem)> AvancarEtapaAsync(int id, string statusAtual, string usuario = null, int errosEvitados = 0)
+    public async Task<(bool Sucesso, string Mensagem)> AvancarEtapaAsync(int id, string etapaAtual, string usuario = null, int errosEvitados = 0)
     {
-        string endpoint = statusAtual switch
+        try
         {
-            "Aguardando" => $"api/pedidos/{id}/separar",
-            "Em Separação" => $"api/pedidos/{id}/AguardandoConfe",
-            "Em Separaçao" => $"api/pedidos/{id}/AguardandoConfe",
-            "Aguardando Conferencia" => $"api/pedidos/{id}/EmConferencia",
-            "Aguardando Expedição" => $"api/pedidos/{id}/Expedido",
-            "Aguardando Expediçao" => $"api/pedidos/{id}/Expedido",
-            _ => string.Empty
-        };
+            string endpoint = etapaAtual switch
+            {
+                "Aguardando" => $"api/pedidos/{id}/separar",
+                "Em Separação" or "Em Separacao" => $"api/pedidos/{id}/AguardandoConfe",
+                "Aguardando Conferencia" => $"api/pedidos/{id}/EmConferencia",
+                "Aguardando Expedição" or "Aguardando Expedicao" => $"api/pedidos/{id}/Expedido",
+                _ => string.Empty
+            };
 
-        if (string.IsNullOrEmpty(endpoint))
-        {
-            return (false, "Este pedido já está em um estado final ou endpoint inválido.");
+            if (string.IsNullOrEmpty(endpoint))
+                return (false, "Etapa inválida para avanço.");
+
+            var dto = new
+            {
+                Usuario = usuario,
+                ErrosEvitados = errosEvitados
+            };
+            var response = await _httpClient.PatchAsJsonAsync(endpoint, dto, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            var erro = await response.Content.ReadAsStringAsync();
+            return (false, $"Erro API: {erro}");
         }
-
-        var dto = new { Usuario = usuario, ErrosEvitados = errosEvitados };
-        var response = await _httpClient.PatchAsJsonAsync(endpoint, dto, _jsonOptions);
-
-        if (response.IsSuccessStatusCode)
+        catch (Exception ex)
         {
-            return (true, string.Empty);
+            return (false, $"Erro de conexão: {ex.Message}");
         }
-
-        if ((int)response.StatusCode == 422)
-        {
-            var error = await response.Content.ReadFromJsonAsync<ProblemDetailsDto>(_jsonOptions);
-            return (false, error?.Detail ?? "Violação de regra de negócio.");
-        }
-
-        return (false, "Ocorreu um erro inesperado ao processar a requisição.");
     }
 
     public async Task<(bool Sucesso, string Mensagem)> ConcluirSeparacaoRotaAsync(Pedido pedido, int tipoRota, string usuario, int errosEvitados = 0)
     {
         try
         {
-            var itensDaRota = pedido.Itens?
+            var itensRota = (pedido.Itens ?? new List<ItemPedido>())
                 .Where(i => i.TipoRota == tipoRota)
                 .Select(i => new
                 {
                     Id = i.Id,
                     CodItem = i.CodItem,
+                    IsCaixaFechada = i.IsCaixaFechada,
                     ScansSep = i.BipagensSeparacao,
                     ScansConf = i.BipagensConferencia
                 }).ToList();
@@ -141,15 +155,15 @@ public class ApiServices : IPedidoService
                 Usuario = usuario,
                 ErrosEvitados = errosEvitados,
                 TipoRota = tipoRota,
-                Itens = itensDaRota
+                Itens = itensRota
             };
 
             var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{pedido.IdPedido}/AguardandoConfe", dto, _jsonOptions);
             if (response.IsSuccessStatusCode)
                 return (true, string.Empty);
 
-            string erro = await ExtrairErroHttpAsync(response);
-            return (false, erro);
+            var erro = await response.Content.ReadAsStringAsync();
+            return (false, $"Erro API: {erro}");
         }
         catch (Exception ex)
         {
@@ -157,17 +171,66 @@ public class ApiServices : IPedidoService
         }
     }
 
-    public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, string usuario = null, int errosEvitados = 0)
+    public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, double peso = 0, string? observacao = null, string usuario = null, int errosEvitados = 0)
     {
         try
         {
             string endpoint = $"api/pedidos/{id}/ConcluirConferencia";
-            var dto = new { Usuario = usuario, Volumes = volumes, ErrosEvitados = errosEvitados };
+            var dto = new
+            {
+                Usuario = usuario,
+                Volumes = volumes,
+                Peso = peso,
+                Observacao = observacao,
+                ErrosEvitados = errosEvitados
+            };
             var response = await _httpClient.PatchAsJsonAsync(endpoint, dto, _jsonOptions);
             if (response.IsSuccessStatusCode)
                 return (true, string.Empty);
 
             return (false, "Erro ao concluir a conferência e gerar volumes.");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de conexão: {ex.Message}");
+        }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> ReverterEtapaAsync(int id, string? motivo = null, string? usuario = null)
+    {
+        try
+        {
+            var dto = new
+            {
+                Usuario = usuario,
+                Motivo = motivo
+            };
+            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/reverter", dto, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            return (false, "Não foi possível reverter o pedido.");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de conexão: {ex.Message}");
+        }
+    }
+
+    public async Task<(bool Sucesso, string Mensagem)> CancelarPedidoAsync(int id, string usuario, string? motivo = null)
+    {
+        try
+        {
+            var dto = new
+            {
+                Usuario = usuario,
+                Motivo = motivo
+            };
+            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/cancelar", dto, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            return (false, "Não foi possível cancelar o pedido.");
         }
         catch (Exception ex)
         {
@@ -189,6 +252,7 @@ public class ApiServices : IPedidoService
                 {
                     Id = i.Id,
                     CodItem = i.CodItem,
+                    IsCaixaFechada = i.IsCaixaFechada,
                     ScansSep = i.BipagensSeparacao,
                     ScansConf = i.BipagensConferencia
                 }).ToList(),
@@ -201,7 +265,11 @@ public class ApiServices : IPedidoService
             };
 
             var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{pedido.IdPedido}/pausar", dto, _jsonOptions);
-            return response.IsSuccessStatusCode ? (true, string.Empty) : (false, "Erro ao colocar pedido em espera.");
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            var erro = await response.Content.ReadAsStringAsync();
+            return (false, $"Erro ao pausar pedido: {erro}");
         }
         catch (Exception ex)
         {
@@ -215,60 +283,15 @@ public class ApiServices : IPedidoService
         {
             var dto = new { Usuario = usuario };
             var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/retomar", dto, _jsonOptions);
-            return response.IsSuccessStatusCode ? (true, string.Empty) : (false, "Erro ao retomar pedido.");
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            var erro = await response.Content.ReadAsStringAsync();
+            return (false, $"Erro ao retomar pedido: {erro}");
         }
         catch (Exception ex)
         {
             return (false, $"Erro de conexão: {ex.Message}");
-        }
-    }
-
-    public async Task<(bool Sucesso, string Mensagem)> ReverterEtapaAsync(int id, string? motivo = null, string? usuario = null)
-    {
-        try
-        {
-            var dto = new { Usuario = usuario, Motivo = motivo };
-            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/reverter", dto, _jsonOptions);
-            return response.IsSuccessStatusCode ? (true, string.Empty) : (false, "Erro ao reverter etapa.");
-        }
-        catch (Exception ex)
-        {
-            return (false, ex.Message);
-        }
-    }
-
-    public async Task<(bool Sucesso, string Mensagem)> CancelarPedidoAsync(int id, string usuario, string? motivo = null)
-    {
-        try
-        {
-            var dto = new { Usuario = usuario, Motivo = motivo };
-            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/cancelar", dto, _jsonOptions);
-            return response.IsSuccessStatusCode ? (true, string.Empty) : (false, "Erro ao cancelar pedido.");
-        }
-        catch (Exception ex)
-        {
-            return (false, ex.Message);
-        }
-    }
-
-    public async Task<string?> BaixarRelatorioProdutividadeAsync(string operadorFiltro)
-    {
-        try
-        {
-            string url = $"api/relatorio/exportar-csv?operador={Uri.EscapeDataString(operadorFiltro)}";
-            var response = await _httpClient.GetAsync(url);
-            if (response.IsSuccessStatusCode)
-            {
-                var bytes = await response.Content.ReadAsByteArrayAsync();
-                string caminhoArquivo = Path.Combine(FileSystem.CacheDirectory, "Relatorio_Produtividade.csv");
-                File.WriteAllBytes(caminhoArquivo, bytes);
-                return caminhoArquivo;
-            }
-            return null;
-        }
-        catch (Exception)
-        {
-            return null;
         }
     }
 
@@ -278,23 +301,79 @@ public class ApiServices : IPedidoService
         {
             var payload = new
             {
+                Id = id,
                 PedidoId = id,
                 DataHora = dataHoraEstimada,
                 DataHoraEstimada = dataHoraEstimada,
+                DataHoraEstimadaString = dataHoraEstimada,
                 Etapa = etapa,
                 Usuario = usuario
             };
 
-            var response = await _httpClient.PatchAsJsonAsync($"api/pedidos/{id}/responder-estimativa", payload, _jsonOptions);
-            if (response.IsSuccessStatusCode)
-                return (true, string.Empty);
+            string[] rotasTentativa =
+            {
+                $"api/pedidos/{id}/estimativa",
+                $"api/pedidos/{id}/responder-estimativa",
+                $"api/pedidos/{id}/enviar-estimativa",
+                $"api/pedido/{id}/estimativa",
+                "api/pedidos/estimativa",
+                "api/pedidos/responder-estimativa"
+            };
 
-            string detalhe = await response.Content.ReadAsStringAsync();
-            return (false, $"HTTP {(int)response.StatusCode}: {detalhe}");
+            HttpResponseMessage? ultimaResposta = null;
+
+            foreach (var rota in rotasTentativa)
+            {
+                ultimaResposta = await _httpClient.PostAsJsonAsync(rota, payload, _jsonOptions);
+                if (ultimaResposta.IsSuccessStatusCode)
+                    return (true, string.Empty);
+
+                if (ultimaResposta.StatusCode != System.Net.HttpStatusCode.NotFound &&
+                    ultimaResposta.StatusCode != System.Net.HttpStatusCode.MethodNotAllowed)
+                {
+                    break;
+                }
+            }
+
+            if (ultimaResposta != null)
+            {
+                var erro = await ultimaResposta.Content.ReadAsStringAsync();
+                return (false, $"Erro HTTP {(int)ultimaResposta.StatusCode}: {erro}");
+            }
+
+            return (false, "Nenhuma rota de estimativa respondeu na API.");
         }
         catch (Exception ex)
         {
-            return (false, $"Erro de Conexão: {ex.Message}");
+            return (false, $"Erro de conexão: {ex.Message}");
+        }
+    }
+
+    public async Task<string?> BaixarRelatorioProdutividadeAsync(string operadorFiltro)
+    {
+        try
+        {
+            string url = "api/relatorios/produtividade/excel";
+            if (!string.IsNullOrWhiteSpace(operadorFiltro) && operadorFiltro != "Todos os Operadores")
+            {
+                url += $"?operador={Uri.EscapeDataString(operadorFiltro)}";
+            }
+
+            var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            string fileName = $"Relatorio_Produtividade_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+            string filePath = Path.Combine(FileSystem.CacheDirectory, fileName);
+
+            await File.WriteAllBytesAsync(filePath, bytes);
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ApiService] Erro ao baixar relatório: {ex.Message}");
+            return null;
         }
     }
 
@@ -302,12 +381,17 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-            return await _httpClient.GetFromJsonAsync<List<Cotacao>>("api/cotacoes?status=Pendente", _jsonOptions, cts.Token)
-                   ?? new List<Cotacao>();
+            var response = await _httpClient.GetAsync("api/cotacoes/pendentes");
+            if (response.IsSuccessStatusCode)
+            {
+                var lista = await response.Content.ReadFromJsonAsync<List<Cotacao>>(_jsonOptions);
+                return lista ?? new List<Cotacao>();
+            }
+            return new List<Cotacao>();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.WriteLine($"[ApiService] Erro ao buscar cotações: {ex.Message}");
             return new List<Cotacao>();
         }
     }
@@ -316,7 +400,7 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            var payload = new
+            var dto = new
             {
                 Volumes = volumes,
                 PesoTotalKg = pesoTotalKg,
@@ -324,34 +408,39 @@ public class ApiServices : IPedidoService
                 Usuario = usuario
             };
 
-            var response = await _httpClient.PatchAsJsonAsync($"api/cotacoes/{id}/responder", payload, _jsonOptions);
+            var response = await _httpClient.PatchAsJsonAsync($"api/cotacoes/{id}/responder", dto, _jsonOptions);
             if (response.IsSuccessStatusCode)
                 return (true, string.Empty);
 
-            string detalhe = await response.Content.ReadAsStringAsync();
-            return (false, $"HTTP {(int)response.StatusCode}: {detalhe}");
+            var erro = await response.Content.ReadAsStringAsync();
+            return (false, $"Erro ao responder cotação: {erro}");
         }
         catch (Exception ex)
         {
-            return (false, $"Erro de Conexão: {ex.Message}");
+            return (false, $"Erro de conexão: {ex.Message}");
         }
     }
+
+    // =========================================================================
+    // REVERSA (DEVOLUCOES) & MODULO INDEPENDENTE DE AVARIADOS
+    // =========================================================================
 
     public async Task<List<Devolucao>> GetDevolucoesAtivasAsync()
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-            var todas = await _httpClient.GetFromJsonAsync<List<Devolucao>>("api/devolucoes", _jsonOptions, cts.Token) ?? new();
-            return todas.Where(d =>
-                d.Status.Equals("Autorizada", StringComparison.OrdinalIgnoreCase) ||
-                d.Status.Equals("Volumes Conferidos", StringComparison.OrdinalIgnoreCase) ||
-                d.Status.Equals("Em Classificação", StringComparison.OrdinalIgnoreCase)
-            ).ToList();
+            var response = await _httpClient.GetAsync("api/devolucoes/ativas");
+            if (response.IsSuccessStatusCode)
+            {
+                var lista = await response.Content.ReadFromJsonAsync<List<Devolucao>>(_jsonOptions);
+                return lista ?? new List<Devolucao>();
+            }
+            return new List<Devolucao>();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return new();
+            Console.WriteLine($"[ApiService] Erro ao buscar devoluções ativas: {ex.Message}");
+            return new List<Devolucao>();
         }
     }
 
@@ -359,20 +448,26 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            var payload = new { CodigoLido = codigoLido, VolumesRecebidos = volumesRecebidos, Usuario = usuario };
-            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/conferir-volumes", payload, _jsonOptions);
+            var dto = new
+            {
+                CodigoLido = codigoLido,
+                VolumesRecebidos = volumesRecebidos,
+                Usuario = usuario
+            };
+
+            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/conferir-volumes", dto, _jsonOptions);
             if (response.IsSuccessStatusCode)
             {
                 var dev = await response.Content.ReadFromJsonAsync<Devolucao>(_jsonOptions);
-                return (true, "Volumes conferidos com sucesso.", dev);
+                return (true, string.Empty, dev);
             }
 
-            string erro = await ExtrairErroHttpAsync(response);
+            var erro = await response.Content.ReadAsStringAsync();
             return (false, erro, null);
         }
         catch (Exception ex)
         {
-            return (false, $"Erro de Conexão: {ex.Message}", null);
+            return (false, $"Erro de conexão: {ex.Message}", null);
         }
     }
 
@@ -380,20 +475,32 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            var payload = new { Usuario = usuario, ItensBipados = itensBipados };
-            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/validar-itens", payload, _jsonOptions);
+            var dto = new
+            {
+                Usuario = usuario,
+                ItensBipados = itensBipados
+            };
+
+            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/validar-itens", dto, _jsonOptions);
             if (response.IsSuccessStatusCode)
             {
-                var json = await response.Content.ReadFromJsonAsync<ValidacaoItensResponseDto>(_jsonOptions);
-                return (true, json?.AprovadaNaConferencia ?? false, json?.Mensagem ?? string.Empty, json?.Devolucao);
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var root = doc.RootElement;
+                bool aprovada = root.TryGetProperty("aprovada", out var propAprov) && propAprov.GetBoolean();
+                string msg = root.TryGetProperty("mensagem", out var propMsg) ? propMsg.GetString() ?? string.Empty : string.Empty;
+                Devolucao? dev = root.TryGetProperty("devolucao", out var propDev)
+                    ? JsonSerializer.Deserialize<Devolucao>(propDev.GetRawText(), _jsonOptions)
+                    : null;
+
+                return (true, aprovada, msg, dev);
             }
 
-            string erro = await ExtrairErroHttpAsync(response);
+            var erro = await response.Content.ReadAsStringAsync();
             return (false, false, erro, null);
         }
         catch (Exception ex)
         {
-            return (false, false, $"Erro de Conexão: {ex.Message}", null);
+            return (false, false, $"Erro de conexão: {ex.Message}", null);
         }
     }
 
@@ -401,17 +508,22 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            var payload = new { MotivoRejeicao = motivoRejeicao, Usuario = usuario };
-            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/recusar", payload, _jsonOptions);
-            if (response.IsSuccessStatusCode)
-                return (true, "Devolução recusada na doca.");
+            var dto = new
+            {
+                MotivoRejeicao = motivoRejeicao,
+                Usuario = usuario
+            };
 
-            string erro = await ExtrairErroHttpAsync(response);
+            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/recusar", dto, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            var erro = await response.Content.ReadAsStringAsync();
             return (false, erro);
         }
         catch (Exception ex)
         {
-            return (false, $"Erro de Conexão: {ex.Message}");
+            return (false, $"Erro de conexão: {ex.Message}");
         }
     }
 
@@ -419,17 +531,22 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            var payload = new { Usuario = usuario, ItensClassificados = itensClassificados };
-            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/classificar-itens", payload, _jsonOptions);
-            if (response.IsSuccessStatusCode)
-                return (true, "Devolução finalizada e estoque atualizado!");
+            var dto = new
+            {
+                Usuario = usuario,
+                ItensClassificados = itensClassificados
+            };
 
-            string erro = await ExtrairErroHttpAsync(response);
+            var response = await _httpClient.PatchAsJsonAsync($"api/devolucoes/{id}/classificar", dto, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            var erro = await response.Content.ReadAsStringAsync();
             return (false, erro);
         }
         catch (Exception ex)
         {
-            return (false, $"Erro de Conexão: {ex.Message}");
+            return (false, $"Erro de conexão: {ex.Message}");
         }
     }
 
@@ -437,12 +554,18 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-            return await _httpClient.GetFromJsonAsync<List<ProdutoAvariado>>("api/avariados", _jsonOptions, cts.Token) ?? new();
+            var response = await _httpClient.GetAsync("api/avariados");
+            if (response.IsSuccessStatusCode)
+            {
+                var lista = await response.Content.ReadFromJsonAsync<List<ProdutoAvariado>>(_jsonOptions);
+                return lista ?? new List<ProdutoAvariado>();
+            }
+            return new List<ProdutoAvariado>();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return new();
+            Console.WriteLine($"[ApiService] Erro ao buscar avarias: {ex.Message}");
+            return new List<ProdutoAvariado>();
         }
     }
 
@@ -450,43 +573,24 @@ public class ApiServices : IPedidoService
     {
         try
         {
-            var payload = new { CodItem = codItem, Quantidade = quantidade, MotivoAvaria = motivoAvaria, Usuario = usuario };
-            var response = await _httpClient.PostAsJsonAsync("api/avariados/registrar-estoque", payload, _jsonOptions);
-            if (response.IsSuccessStatusCode)
-                return (true, "Produto avariado registrado com sucesso!");
+            var dto = new
+            {
+                CodItem = codItem,
+                Quantidade = quantidade,
+                MotivoAvaria = motivoAvaria,
+                Usuario = usuario
+            };
 
-            string erro = await ExtrairErroHttpAsync(response);
+            var response = await _httpClient.PostAsJsonAsync("api/avariados/registrar-estoque", dto, _jsonOptions);
+            if (response.IsSuccessStatusCode)
+                return (true, string.Empty);
+
+            var erro = await response.Content.ReadAsStringAsync();
             return (false, erro);
         }
         catch (Exception ex)
         {
-            return (false, $"Erro de Conexão: {ex.Message}");
+            return (false, $"Erro de conexão: {ex.Message}");
         }
     }
-
-    private async Task<string> ExtrairErroHttpAsync(HttpResponseMessage response)
-    {
-        try
-        {
-            var dict = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>(_jsonOptions);
-            if (dict != null && dict.TryGetValue("message", out var msg))
-                return msg?.ToString() ?? $"HTTP {(int)response.StatusCode}";
-        }
-        catch { }
-        return $"HTTP {(int)response.StatusCode}";
-    }
-
-    private sealed class ValidacaoItensResponseDto
-    {
-        public bool AprovadaNaConferencia { get; set; }
-        public string Mensagem { get; set; } = string.Empty;
-        public Devolucao? Devolucao { get; set; }
-    }
-}
-
-public class ProblemDetailsDto
-{
-    public string Title { get; set; } = string.Empty;
-    public int Status { get; set; }
-    public string Detail { get; set; } = string.Empty;
 }

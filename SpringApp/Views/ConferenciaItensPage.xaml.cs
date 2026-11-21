@@ -83,7 +83,6 @@ public partial class ConferenciaItensPage : ContentPage
 
     protected override bool OnBackButtonPressed() => true;
 
-    // Preenche os dados do pedido e exibe o card enxuto de estimativa caso esteja pendente
     private void CarregarDados()
     {
         NumeroPedidoLabel.Text = $"#{_pedido.IdPedido:D4}";
@@ -106,7 +105,6 @@ public partial class ConferenciaItensPage : ContentPage
         GarantirFocoLeitor();
     }
 
-    // Abre o formulario de estimativa da conferencia travado a partir da data/hora do separador
     private void OnAbrirModalEstimativaConfClicked(object sender, EventArgs e)
     {
         _bloqueioFoco = true;
@@ -145,7 +143,6 @@ public partial class ConferenciaItensPage : ContentPage
         OverlayEstimativaConf.IsVisible = true;
     }
 
-    // Fecha o formulario de estimativa e devolve o foco ao leitor
     private void OnCancelarModalEstimativaConfClicked(object sender, EventArgs e)
     {
         OverlayEstimativaConf.IsVisible = false;
@@ -154,7 +151,6 @@ public partial class ConferenciaItensPage : ContentPage
         GarantirFocoLeitor();
     }
 
-    // Valida o horario minimo e envia a previsao final com assinatura do conferente
     private async void OnConfirmarModalEstimativaConfClicked(object sender, EventArgs e)
     {
         DateTime dataSelecionada = Convert.ToDateTime(EstimativaConfDatePicker.Date).Date;
@@ -225,9 +221,25 @@ public partial class ConferenciaItensPage : ContentPage
         }
     }
 
+    private ItemPedido? BuscarItemConferencia(string codigo)
+    {
+        string codLimpo = codigo.Trim();
+
+        // Exige estritamente o codigo esperado (CodCaixaFechada para caixa fechada | CodItem para unitario), igual na separacao
+        var pendente = _pedido.Itens.FirstOrDefault(i =>
+            i.ConferenciaPendente > 0 &&
+            i.CodigoBipagemEsperado.Equals(codLimpo, StringComparison.OrdinalIgnoreCase));
+
+        if (pendente != null) return pendente;
+
+        // Fallback para itens ja concluidos para nao acusar erro falso em leitura duplicada
+        return _pedido.Itens.FirstOrDefault(i =>
+            i.CodigoBipagemEsperado.Equals(codLimpo, StringComparison.OrdinalIgnoreCase));
+    }
+
     private async Task ValidarCodigoLidoAsync(string codigo)
     {
-        var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo, StringComparison.OrdinalIgnoreCase));
+        var item = BuscarItemConferencia(codigo);
         if (item != null)
         {
             ProcessarBipagemItem(item);
@@ -238,7 +250,16 @@ public partial class ConferenciaItensPage : ContentPage
             _bloqueioFoco = true;
             try
             {
-                await DisplayAlert("Atenção", "Código de produto inválido.", "OK");
+                bool bipouAvulsoEmCaixaFechada = _pedido.Itens.Any(i =>
+                    i.IsCaixaFechada &&
+                    i.ConferenciaPendente > 0 &&
+                    i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                string msgAlerta = bipouAvulsoEmCaixaFechada
+                    ? "Este item exige a bipagem do código de CAIXA FECHADA!"
+                    : "Código de produto ou caixa fechada inválido.";
+
+                await DisplayAlert("Atenção", msgAlerta, "OK");
             }
             finally
             {
@@ -254,11 +275,11 @@ public partial class ConferenciaItensPage : ContentPage
         _bloqueioFoco = true;
         try
         {
-            string codigo = await DisplayPromptAsync("Manual", "Informe o SKU do produto:", "Confirmar", "Cancelar");
+            string codigo = await DisplayPromptAsync("Manual", "Informe o SKU ou Código da Caixa Fechada:", "Confirmar", "Cancelar");
 
             if (!string.IsNullOrWhiteSpace(codigo))
             {
-                var item = _pedido.Itens.FirstOrDefault(i => i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
+                var item = BuscarItemConferencia(codigo);
                 if (item != null)
                 {
                     ProcessarBipagemItem(item);
@@ -266,7 +287,16 @@ public partial class ConferenciaItensPage : ContentPage
                 else
                 {
                     _errosEvitados++;
-                    await DisplayAlert("Erro", "Produto não encontrado.", "OK");
+                    bool bipouAvulsoEmCaixaFechada = _pedido.Itens.Any(i =>
+                        i.IsCaixaFechada &&
+                        i.ConferenciaPendente > 0 &&
+                        i.CodItem.Equals(codigo.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                    string msgErro = bipouAvulsoEmCaixaFechada
+                        ? "Informe o código da CAIXA FECHADA (não o SKU unitário)."
+                        : "Produto não encontrado.";
+
+                    await DisplayAlert("Erro", msgErro, "OK");
                 }
             }
         }
@@ -297,7 +327,7 @@ public partial class ConferenciaItensPage : ContentPage
 
         if (totalPendente <= 0 && _pedido.Itens.Any())
         {
-            _ = IniciarEtapaVolumesAsync();
+            AbrirModalVolumesEObservacao();
         }
         else
         {
@@ -305,50 +335,69 @@ public partial class ConferenciaItensPage : ContentPage
         }
     }
 
-    private async Task IniciarEtapaVolumesAsync()
+    private void AbrirModalVolumesEObservacao()
     {
-        int volumes = 0;
-        bool volumeValido = false;
-
         _bloqueioFoco = true;
-        try
-        {
-            while (!volumeValido)
-            {
-                string resposta = await DisplayPromptAsync("Produtos Conferidos!", "Quantos volumes (caixas) este pedido gerou?", "Confirmar", "Cancelar", keyboard: Keyboard.Numeric);
-
-                if (int.TryParse(resposta, out volumes) && volumes > 0)
-                {
-                    volumeValido = true;
-                }
-                else
-                {
-                    await DisplayAlert("Atenção", "É obrigatório informar um número válido de volumes para prosseguir.", "OK");
-                }
-            }
-        }
-        finally
-        {
-            _bloqueioFoco = false;
-        }
-
-        await FinalizarConferenciaNoBancoAsync(volumes);
+        QtdVolumesEntry.Text = "1";
+        ObservacaoConferenciaEditor.Text = string.Empty;
+        OverlayVolumesObservacao.IsVisible = true;
     }
 
-    private async Task FinalizarConferenciaNoBancoAsync(int qtdVolumes)
+    private void OnDiminuirVolumesClicked(object sender, EventArgs e)
+    {
+        int atual = int.TryParse(QtdVolumesEntry.Text, out int v) ? v : 1;
+        if (atual > 1)
+        {
+            QtdVolumesEntry.Text = (atual - 1).ToString();
+        }
+    }
+
+    private void OnAumentarVolumesClicked(object sender, EventArgs e)
+    {
+        int atual = int.TryParse(QtdVolumesEntry.Text, out int v) ? v : 1;
+        if (atual < 99)
+        {
+            QtdVolumesEntry.Text = (atual + 1).ToString();
+        }
+    }
+
+    private void OnCancelarModalVolumesObservacaoClicked(object sender, EventArgs e)
+    {
+        OverlayVolumesObservacao.IsVisible = false;
+        _bloqueioFoco = false;
+        GarantirFocoLeitor();
+    }
+
+    private async void OnConfirmarVolumesObservacaoClicked(object sender, EventArgs e)
+    {
+        if (!int.TryParse(QtdVolumesEntry.Text?.Trim(), out int qtdVolumes) || qtdVolumes <= 0)
+        {
+            await DisplayAlert("Atenção", "Informe uma quantidade válida de volumes (mínimo 1).", "OK");
+            return;
+        }
+
+        string? observacao = ObservacaoConferenciaEditor.Text?.Trim();
+
+        OverlayVolumesObservacao.IsVisible = false;
+        await FinalizarConferenciaNoBancoAsync(qtdVolumes, 0, observacao);
+    }
+
+    private async Task FinalizarConferenciaNoBancoAsync(int qtdVolumes, double peso, string? observacao)
     {
         if (_isFinalizando) return;
         _isFinalizando = true;
 
-        var (sucesso, msg) = await _pedidoService.ConcluirConferenciaAsync(_pedido.IdPedido, qtdVolumes, _usuarioLogado, _errosEvitados);
+        var (sucesso, msg) = await _pedidoService.ConcluirConferenciaAsync(_pedido.IdPedido, qtdVolumes, peso, observacao, _usuarioLogado, _errosEvitados);
         if (sucesso)
         {
+            _bloqueioFoco = false;
             await DisplayAlert("Sucesso", "Conferência concluída com sucesso!", "OK");
             await Navigation.PopAsync();
         }
         else
         {
             _isFinalizando = false;
+            _bloqueioFoco = false;
             await DisplayAlert("Erro", msg, "OK");
             GarantirFocoLeitor();
         }

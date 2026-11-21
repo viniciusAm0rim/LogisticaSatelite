@@ -25,6 +25,12 @@ public class Pedido
     [JsonPropertyName("volumes")]
     public int Volumes { get; set; }
 
+    [JsonPropertyName("peso")]
+    public double Peso { get; set; }
+
+    [JsonPropertyName("observacaoConferencia")]
+    public string? ObservacaoConferencia { get; set; }
+
     [JsonPropertyName("errosEvitados")]
     public int ErrosEvitados { get; set; }
 
@@ -47,7 +53,6 @@ public class Pedido
 
     [JsonPropertyName("motivoCancelamento")] public string? MotivoCancelamento { get; set; }
 
-    // Controle de espera e pausa
     [JsonPropertyName("emEspera")] public bool EmEspera { get; set; }
     [JsonPropertyName("etapaPausada")] public string EtapaPausada { get; set; }
     [JsonPropertyName("pausadoPor")] public string PausadoPor { get; set; }
@@ -91,7 +96,6 @@ public class Pedido
 
     [JsonIgnore] public bool IsExpanded { get; set; }
 
-    // Propriedades gerais da estimativa
     [JsonPropertyName("estimativaSolicitada")]
     public bool EstimativaSolicitada { get; set; }
 
@@ -101,7 +105,6 @@ public class Pedido
     [JsonPropertyName("dataHoraEstimada")]
     public string DataHoraEstimada { get; set; }
 
-    // Controle das 2 etapas da estimativa (Separador -> Conferente)
     [JsonPropertyName("estimativaPendenteSeparacao")]
     public bool EstimativaPendenteSeparacao { get; set; }
 
@@ -120,7 +123,6 @@ public class Pedido
     [JsonPropertyName("estimativaConferenciaUser")]
     public string EstimativaConferenciaUser { get; set; }
 
-    // Resumo enxuto para os cards: mostra "Aguardando estimativa" ou o separador e horario estimado
     [JsonIgnore]
     public string DescricaoPendenciaEstimativa
     {

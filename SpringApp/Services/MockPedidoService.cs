@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.Maui.Storage;
 using SpringApp.Models;
 
@@ -7,6 +8,43 @@ namespace SpringApp.Services;
 public class MockPedidoService : IPedidoService
 {
     private static readonly List<Pedido> _historicoRelatorio = new List<Pedido>();
+
+    private static List<ItemPedido> OrdenarRotaInteligente(IEnumerable<ItemPedido> itens)
+    {
+        return itens
+            .OrderBy(i => i.IsCaixaFechada ? 1 : 0)
+            .ThenBy(i => i.IsCaixaFechada ? i.LocalPulmao : i.LocalPicking, Comparer<string?>.Create(CompararEnderecoNatural))
+            .ThenBy(i => i.CodItem, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static int CompararEnderecoNatural(string? x, string? y)
+    {
+        if (ReferenceEquals(x, y)) return 0;
+        if (string.IsNullOrWhiteSpace(x)) return 1;
+        if (string.IsNullOrWhiteSpace(y)) return -1;
+
+        var tokensX = Regex.Matches(x.Trim().ToUpperInvariant(), @"(\d+|\D+)");
+        var tokensY = Regex.Matches(y.Trim().ToUpperInvariant(), @"(\d+|\D+)");
+
+        int limite = Math.Min(tokensX.Count, tokensY.Count);
+        for (int i = 0; i < limite; i++)
+        {
+            string tx = tokensX[i].Value;
+            string ty = tokensY[i].Value;
+
+            bool numX = int.TryParse(tx, out int nx);
+            bool numY = int.TryParse(ty, out int ny);
+
+            int cmp = (numX && numY)
+                ? nx.CompareTo(ny)
+                : string.Compare(tx, ty, StringComparison.OrdinalIgnoreCase);
+
+            if (cmp != 0) return cmp;
+        }
+
+        return tokensX.Count.CompareTo(tokensY.Count);
+    }
 
     private static readonly List<Devolucao> _devolucoesMock = new List<Devolucao>
     {
@@ -95,12 +133,73 @@ public class MockPedidoService : IPedidoService
             EstimativaPendenteConferencia = false,
             SolicitanteEstimativa = "Comercial (Web)",
             DataHoraEstimada = "",
-            Itens = new List<ItemPedido>
+            Itens = OrdenarRotaInteligente(new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 1, CodItem = "001", Nome = "Caixa Organizadora Plástica 30L", LocalPicking = "R1-A-01", TipoRota = 0, Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0 },
-                new ItemPedido { ProdutoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", LocalPicking = "R2-A-05", TipoRota = 0, Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0 },
-                new ItemPedido { ProdutoId = 3, CodItem = "003", Nome = "Bobina Plástico Bolha 1,20m x 100m", LocalPicking = "LAB-TEC-01", TipoRota = 1, Quantidade = 1, BipagensSeparacao = 0, BipagensConferencia = 0 }
-            }
+                new ItemPedido
+                {
+                    Id = 1,
+                    PedidoId = 101,
+                    ProdutoId = 1,
+                    CodItem = "001",
+                    CodCaixaFechada = "CX-001",
+                    Nome = "Caixa Organizadora Plástica 30L",
+                    LocalPicking = "R1-A-01",
+                    LocalPulmao = "A1-P2",
+                    IsCaixaFechada = false,
+                    QtdPorVolume = 1,
+                    TipoRota = 0,
+                    Quantidade = 1,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                },
+                new ItemPedido
+                {
+                    Id = 2,
+                    PedidoId = 101,
+                    ProdutoId = 1,
+                    CodItem = "001",
+                    CodCaixaFechada = "CX-001",
+                    Nome = "Caixa Organizadora Plástica 30L (Caixa Fechada c/ 25 un.)",
+                    LocalPicking = "R1-A-01",
+                    LocalPulmao = "A1-P2",
+                    IsCaixaFechada = true,
+                    QtdPorVolume = 25,
+                    TipoRota = 0,
+                    Quantidade = 1,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                },
+                new ItemPedido
+                {
+                    Id = 3,
+                    PedidoId = 101,
+                    ProdutoId = 2,
+                    CodItem = "002",
+                    CodCaixaFechada = "CX-002",
+                    Nome = "Fita Adesiva Transparente 45mm x 100m",
+                    LocalPicking = "R2-A-05",
+                    LocalPulmao = "A1-P5",
+                    IsCaixaFechada = false,
+                    QtdPorVolume = 1,
+                    TipoRota = 0,
+                    Quantidade = 1,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                },
+                new ItemPedido
+                {
+                    Id = 4,
+                    PedidoId = 101,
+                    ProdutoId = 3,
+                    CodItem = "003",
+                    Nome = "Bobina Plástico Bolha 1,20m x 100m",
+                    LocalPicking = "LAB-TEC-01",
+                    TipoRota = 1,
+                    Quantidade = 1,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                }
+            })
         },
         new Pedido
         {
@@ -113,10 +212,22 @@ public class MockPedidoService : IPedidoService
             Volumes = 0,
             EstimativaSolicitada = false,
             DataHoraEstimada = "11/10/2026 16:30",
-            Itens = new List<ItemPedido>
+            Itens = OrdenarRotaInteligente(new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 3, CodItem = "003", Nome = "Bobina Plástico Bolha 1,20m x 100m", LocalPicking = "LAB-TEC-01", TipoRota = 1, Quantidade = 2, BipagensSeparacao = 0, BipagensConferencia = 0 }
-            }
+                new ItemPedido
+                {
+                    Id = 5,
+                    PedidoId = 102,
+                    ProdutoId = 3,
+                    CodItem = "003",
+                    Nome = "Bobina Plástico Bolha 1,20m x 100m",
+                    LocalPicking = "LAB-TEC-01",
+                    TipoRota = 1,
+                    Quantidade = 2,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                }
+            })
         },
         new Pedido
         {
@@ -129,10 +240,240 @@ public class MockPedidoService : IPedidoService
             Volumes = 0,
             EstimativaSolicitada = false,
             DataHoraEstimada = "11/10/2026 18:00",
-            Itens = new List<ItemPedido>
+            Itens = OrdenarRotaInteligente(new List<ItemPedido>
             {
-                new ItemPedido { ProdutoId = 2, CodItem = "002", Nome = "Fita Adesiva Transparente 45mm x 100m", LocalPicking = "R2-A-05", TipoRota = 0, Quantidade = 3, BipagensSeparacao = 0, BipagensConferencia = 0 }
-            }
+                new ItemPedido
+                {
+                    Id = 6,
+                    PedidoId = 103,
+                    ProdutoId = 2,
+                    CodItem = "002",
+                    CodCaixaFechada = "CX-002",
+                    Nome = "Fita Adesiva Transparente 45mm x 100m",
+                    LocalPicking = "R2-A-05",
+                    LocalPulmao = "A1-P5",
+                    IsCaixaFechada = false,
+                    QtdPorVolume = 1,
+                    TipoRota = 0,
+                    Quantidade = 3,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                }
+            })
+        },
+        new Pedido
+        {
+            IdPedido = 104,
+            Cliente = "Distribuidora Serra Sul",
+            Modal = "Transportadora",
+            NomeTransportadora = "Expresso Paulista",
+            CodTransportadora = "CTR-14",
+            Status = "Aguardando",
+            Volumes = 0,
+            EstimativaSolicitada = true,
+            EstimativaPendenteSeparacao = false,
+            EstimativaPendenteConferencia = true,
+            SolicitanteEstimativa = "Comercial (Web)",
+            DataHoraEstimada = "21/11/2026 14:30",
+            Itens = OrdenarRotaInteligente(new List<ItemPedido>
+            {
+                new ItemPedido
+                {
+                    Id = 7,
+                    PedidoId = 104,
+                    ProdutoId = 1,
+                    CodItem = "001",
+                    CodCaixaFechada = "CX-001",
+                    Nome = "Caixa Organizadora Plástica 30L",
+                    LocalPicking = "R1-A-01",
+                    LocalPulmao = "A1-P2",
+                    IsCaixaFechada = false,
+                    QtdPorVolume = 1,
+                    TipoRota = 0,
+                    Quantidade = 4,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                },
+                new ItemPedido
+                {
+                    Id = 8,
+                    PedidoId = 104,
+                    ProdutoId = 2,
+                    CodItem = "002",
+                    CodCaixaFechada = "CX-002",
+                    Nome = "Fita Adesiva Transparente 45mm x 100m (Caixa Fechada c/ 36 un.)",
+                    LocalPicking = "R2-A-05",
+                    LocalPulmao = "A1-P5",
+                    IsCaixaFechada = true,
+                    QtdPorVolume = 36,
+                    TipoRota = 0,
+                    Quantidade = 1,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                }
+            })
+        },
+        new Pedido
+        {
+            IdPedido = 105,
+            Cliente = "Mercado Central Itapecerica",
+            Modal = "Loja",
+            NomeTransportadora = "Cliente Loja",
+            CodTransportadora = "CTR-00",
+            Status = "Aguardando",
+            Volumes = 0,
+            EstimativaSolicitada = false,
+            DataHoraEstimada = "21/11/2026 15:45",
+            Itens = OrdenarRotaInteligente(new List<ItemPedido>
+            {
+                new ItemPedido
+                {
+                    Id = 9,
+                    PedidoId = 105,
+                    ProdutoId = 2,
+                    CodItem = "002",
+                    CodCaixaFechada = "CX-002",
+                    Nome = "Fita Adesiva Transparente 45mm x 100m",
+                    LocalPicking = "R2-A-05",
+                    LocalPulmao = "A1-P5",
+                    IsCaixaFechada = false,
+                    QtdPorVolume = 1,
+                    TipoRota = 0,
+                    Quantidade = 6,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                },
+                new ItemPedido
+                {
+                    Id = 10,
+                    PedidoId = 105,
+                    ProdutoId = 3,
+                    CodItem = "003",
+                    Nome = "Bobina Plástico Bolha 1,20m x 100m",
+                    LocalPicking = "LAB-TEC-01",
+                    TipoRota = 1,
+                    Quantidade = 1,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                }
+            })
+        },
+        new Pedido
+        {
+            IdPedido = 106,
+            Cliente = "Constrular Horizonte",
+            Modal = "Transportadora",
+            NomeTransportadora = "Logística Rápida",
+            CodTransportadora = "CTR-99",
+            Status = "Aguardando Conferencia",
+            Volumes = 2,
+            EstimativaSolicitada = false,
+            DataHoraEstimada = "21/11/2026 16:00",
+            Itens = OrdenarRotaInteligente(new List<ItemPedido>
+            {
+                new ItemPedido
+                {
+                    Id = 11,
+                    PedidoId = 106,
+                    ProdutoId = 1,
+                    CodItem = "001",
+                    CodCaixaFechada = "CX-001",
+                    Nome = "Caixa Organizadora Plástica 30L (Caixa Fechada c/ 25 un.)",
+                    LocalPicking = "R1-A-01",
+                    LocalPulmao = "A1-P2",
+                    IsCaixaFechada = true,
+                    QtdPorVolume = 25,
+                    TipoRota = 0,
+                    Quantidade = 2,
+                    BipagensSeparacao = 2,
+                    BipagensConferencia = 0
+                }
+            })
+        },
+        new Pedido
+        {
+            IdPedido = 107,
+            Cliente = "Atacado Bandeirantes",
+            Modal = "Retira",
+            NomeTransportadora = "Retirada Local",
+            CodTransportadora = "CTR-00",
+            Status = "Aguardando",
+            Volumes = 0,
+            EstimativaSolicitada = true,
+            EstimativaPendenteSeparacao = true,
+            EstimativaPendenteConferencia = false,
+            SolicitanteEstimativa = "Comercial (Web)",
+            DataHoraEstimada = "",
+            Itens = OrdenarRotaInteligente(new List<ItemPedido>
+            {
+                new ItemPedido
+                {
+                    Id = 12,
+                    PedidoId = 107,
+                    ProdutoId = 1,
+                    CodItem = "001",
+                    CodCaixaFechada = "CX-001",
+                    Nome = "Caixa Organizadora Plástica 30L",
+                    LocalPicking = "R1-A-01",
+                    LocalPulmao = "A1-P2",
+                    IsCaixaFechada = false,
+                    QtdPorVolume = 1,
+                    TipoRota = 0,
+                    Quantidade = 5,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                },
+                new ItemPedido
+                {
+                    Id = 13,
+                    PedidoId = 107,
+                    ProdutoId = 3,
+                    CodItem = "003",
+                    Nome = "Bobina Plástico Bolha 1,20m x 100m",
+                    LocalPicking = "LAB-TEC-02",
+                    TipoRota = 1,
+                    Quantidade = 3,
+                    BipagensSeparacao = 0,
+                    BipagensConferencia = 0
+                }
+            })
+        },
+        new Pedido
+        {
+            IdPedido = 108,
+            Cliente = "Empório Embu Guaçu",
+            Modal = "Transportadora",
+            NomeTransportadora = "Expresso Paulista",
+            CodTransportadora = "CTR-14",
+            Status = "Aguardando Expediçao",
+            Volumes = 2,
+            EstimativaSolicitada = false,
+            DataHoraEstimada = "21/11/2026 17:15",
+            VolumesPedidos = new List<VolumePedidoDto>
+            {
+                new VolumePedidoDto { Id = 1, CodigoVolume = "c1p108v1", BipadoExpedicao = false },
+                new VolumePedidoDto { Id = 2, CodigoVolume = "c1p108v2", BipadoExpedicao = false }
+            },
+            Itens = OrdenarRotaInteligente(new List<ItemPedido>
+            {
+                new ItemPedido
+                {
+                    Id = 14,
+                    PedidoId = 108,
+                    ProdutoId = 2,
+                    CodItem = "002",
+                    CodCaixaFechada = "CX-002",
+                    Nome = "Fita Adesiva Transparente 45mm x 100m",
+                    LocalPicking = "R2-A-05",
+                    LocalPulmao = "A1-P5",
+                    IsCaixaFechada = false,
+                    QtdPorVolume = 1,
+                    TipoRota = 0,
+                    Quantidade = 4,
+                    BipagensSeparacao = 4,
+                    BipagensConferencia = 4
+                }
+            })
         }
     };
 
@@ -182,7 +523,12 @@ public class MockPedidoService : IPedidoService
     public async Task<Pedido?> GetPedidoPorIdAsync(int id)
     {
         await Task.Delay(100);
-        return _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
+        var pedido = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
+        if (pedido != null && pedido.Itens != null)
+        {
+            pedido.Itens = OrdenarRotaInteligente(pedido.Itens);
+        }
+        return pedido;
     }
 
     public async Task<(bool Sucesso, string Mensagem)> BloquearPedidoAsync(int id, string usuario)
@@ -223,7 +569,6 @@ public class MockPedidoService : IPedidoService
             if (etapaAtual.Equals("Aguardando", StringComparison.OrdinalIgnoreCase))
                 return (true, "Sucesso");
 
-            // Só avança para Conferência se 100% de TODOS os itens (rota 0 e rota 1) estiverem bipados
             if (mock.Itens != null && mock.Itens.Any(i => i.BipagensSeparacao < i.Quantidade))
             {
                 mock.Status = "Em Separaçao";
@@ -269,11 +614,11 @@ public class MockPedidoService : IPedidoService
         mock.DataHoraPausa = null;
         mock.ErrosEvitados += errosEvitados;
 
-        // Atualiza exclusivamente os itens pertencentes à rota concluída (0 = Comum | 1 = Área Técnica)
         foreach (var itemMock in mock.Itens.Where(i => i.TipoRota == tipoRota))
         {
             var itemUi = pedido.Itens?.FirstOrDefault(x =>
                 x.TipoRota == tipoRota &&
+                x.IsCaixaFechada == itemMock.IsCaixaFechada &&
                 x.CodItem.Equals(itemMock.CodItem, StringComparison.OrdinalIgnoreCase));
 
             int bipado = itemUi != null ? Math.Max(itemMock.BipagensSeparacao, itemUi.BipagensSeparacao) : itemMock.Quantidade;
@@ -285,7 +630,6 @@ public class MockPedidoService : IPedidoService
         else if (!mock.SepUser.Contains(usuarioAtual))
             mock.SepUser = $"{mock.SepUser} / {usuarioAtual}";
 
-        // Só libera para "Aguardando Conferencia" quando TODOS os itens (rota 0 e rota 1) estiverem bipados
         bool todosConcluidos = mock.Itens.Any() && mock.Itens.All(i => i.BipagensSeparacao >= i.Quantidade);
         if (todosConcluidos)
         {
@@ -300,7 +644,7 @@ public class MockPedidoService : IPedidoService
         return (true, "Sucesso");
     }
 
-    public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, string usuario = null, int errosEvitados = 0)
+    public async Task<(bool Sucesso, string Mensagem)> ConcluirConferenciaAsync(int id, int volumes, double peso = 0, string? observacao = null, string usuario = null, int errosEvitados = 0)
     {
         await Task.Delay(200);
         var mock = _pedidosMock.FirstOrDefault(p => p.IdPedido == id);
@@ -315,6 +659,8 @@ public class MockPedidoService : IPedidoService
 
         mock.Status = "Aguardando Expediçao";
         mock.Volumes = volumes;
+        mock.Peso = Math.Round(peso, 2);
+        mock.ObservacaoConferencia = string.IsNullOrWhiteSpace(observacao) ? null : observacao.Trim();
         mock.ConfUser = usuarioAtual;
         mock.ConfFimData = DateTime.Now;
         mock.ErrosEvitados += errosEvitados;
@@ -353,7 +699,10 @@ public class MockPedidoService : IPedidoService
         {
             foreach (var itemUi in pedido.Itens)
             {
-                var itemMock = mock.Itens.FirstOrDefault(i => i.CodItem.Equals(itemUi.CodItem, StringComparison.OrdinalIgnoreCase));
+                var itemMock = mock.Itens.FirstOrDefault(i =>
+                    i.IsCaixaFechada == itemUi.IsCaixaFechada &&
+                    i.CodItem.Equals(itemUi.CodItem, StringComparison.OrdinalIgnoreCase));
+
                 if (itemMock != null)
                 {
                     itemMock.BipagensSeparacao = Math.Max(itemMock.BipagensSeparacao, itemUi.BipagensSeparacao);

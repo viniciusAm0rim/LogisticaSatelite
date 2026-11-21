@@ -46,7 +46,7 @@ namespace SpringApp
             }
             else
             {
-                builder.Services.AddSingleton<IPedidoService, ApiServices>();
+                builder.Services.AddSingleton<IPedidoService, ApiService>();
                 builder.Services.AddSingleton<IAuthService, AuthService>();
             }
 
